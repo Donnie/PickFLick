@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
+	"time"
 
 	"github.com/yhat/scrape"
 	"golang.org/x/net/html"
@@ -17,9 +19,11 @@ type Movie struct {
 	Title       string `json:"title"`
 }
 
+var startPage = "https://www.kino.de/filme/aktuell/?sp_country=deutschland"
+
 func main() {
 	// request and parse Kino.DE
-	resp, err := http.Get("https://www.kino.de/filme/aktuell/?sp_country=deutschland")
+	resp, err := http.Get(startPage)
 	if err != nil {
 		panic(err)
 	}
@@ -28,8 +32,39 @@ func main() {
 		panic(err)
 	}
 
-	// Search for the title
+	// Get all pages
+	pagination, _ := scrape.Find(root, scrape.ByClass("alice-pagination-default"))
+	pages := strings.Fields(scrape.Text(pagination))
+	pages = pages[1 : len(pages)-1]
+
+	for i, page := range pages {
+		if page == "1" {
+			pages[i] = startPage
+		} else {
+			pages[i] = "https://www.kino.de/filme/aktuell/page/" + page + "/?sp_country=deutschland"
+		}
+	}
+
 	movies := []Movie{}
+
+	for _, link := range pages {
+		movies = append(movies, getPage(link)...)
+		time.Sleep(2 * time.Second)
+	}
+
+	b, _ := json.Marshal(movies)
+	fmt.Println(string(b))
+}
+
+func getPage(link string) (movies []Movie) {
+	resp, err := http.Get(link)
+	if err != nil {
+		panic(err)
+	}
+	root, err := html.Parse(resp.Body)
+	if err != nil {
+		panic(err)
+	}
 
 	lists := scrape.FindAll(root, scrape.ByClass("alice-teaser-media"))
 	for _, list := range lists {
@@ -42,6 +77,5 @@ func main() {
 		movies = append(movies, movie)
 	}
 
-	b, _ := json.Marshal(movies)
-	fmt.Println(string(b))
+	return
 }
