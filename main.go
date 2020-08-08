@@ -16,6 +16,7 @@ type Movie struct {
 	Description string `json:"description"`
 	Link        string `json:"link"`
 	Poster      string `json:"poster"`
+	Rank        int    `json:"rank"`
 	Title       string `json:"title"`
 }
 
@@ -46,9 +47,10 @@ func main() {
 	}
 
 	movies := []Movie{}
+	rank := 0
 
 	for _, link := range pages {
-		movies = append(movies, getPage(link)...)
+		movies = append(movies, getPage(link, &rank)...)
 		time.Sleep(2 * time.Second)
 	}
 
@@ -56,7 +58,7 @@ func main() {
 	fmt.Println(string(b))
 }
 
-func getPage(link string) (movies []Movie) {
+func getPage(link string, rank *int) (movies []Movie) {
 	resp, err := http.Get(link)
 	if err != nil {
 		panic(err)
@@ -68,10 +70,12 @@ func getPage(link string) (movies []Movie) {
 
 	lists := scrape.FindAll(root, scrape.ByClass("alice-teaser-media"))
 	for _, list := range lists {
+		*rank++
 		movie := Movie{
 			Description: scrape.Text(list.NextSibling.FirstChild.NextSibling),
 			Link:        "https:" + scrape.Attr(list.NextSibling.FirstChild.FirstChild, "href"),
 			Poster:      "https:" + scrape.Attr(list.FirstChild.FirstChild, "data-src"),
+			Rank:        *rank,
 			Title:       scrape.Text(list.NextSibling.FirstChild.FirstChild),
 		}
 		movies = append(movies, movie)
