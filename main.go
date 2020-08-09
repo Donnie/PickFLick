@@ -1,85 +1,52 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
-	"net/http"
-	"strings"
-	"time"
+	"log"
+	"os"
+	"strconv"
 
-	"github.com/yhat/scrape"
-	"golang.org/x/net/html"
+	"github.com/gin-gonic/gin"
+	tg "github.com/go-telegram-bot-api/telegram-bot-api"
+	"github.com/joho/godotenv"
 )
 
-// Movie struct
-type Movie struct {
-	Description string `json:"description"`
-	Link        string `json:"link"`
-	Poster      string `json:"poster"`
-	Rank        int    `json:"rank"`
-	Title       string `json:"title"`
+func init() {
+	if _, err := os.Stat(".env.local"); os.IsNotExist(err) {
+		godotenv.Load(".env")
+	} else {
+		godotenv.Load(".env.local")
+	}
+	fmt.Println("Running for " + os.Getenv("ENV"))
 }
-
-var startPage = "https://www.kino.de/filme/aktuell/?sp_country=deutschland"
 
 func main() {
-	// request and parse Kino.DE
-	resp, err := http.Get(startPage)
+	teleToken, exists := os.LookupEnv("TELEGRAM_TOKEN")
+	if !exists {
+		fmt.Println("Add TELEGRAM_TOKEN to .env file")
+		os.Exit(1)
+	}
+	filename, exists := os.LookupEnv("DBFILE")
+	if !exists {
+		fmt.Println("Add DBFILE to .env file")
+		os.Exit(1)
+	}
+
+	bot, err := tg.NewBotAPI(teleToken)
 	if err != nil {
-		panic(err)
+		log.Panic(err)
 	}
-	root, err := html.Parse(resp.Body)
-	if err != nil {
-		panic(err)
-	}
+	bot.Debug, _ = strconv.ParseBool(os.Getenv("DEBUG"))
 
-	// Get all pages
-	pagination, _ := scrape.Find(root, scrape.ByClass("alice-pagination-default"))
-	pages := strings.Fields(scrape.Text(pagination))
-	pages = pages[1 : len(pages)-1]
-
-	for i, page := range pages {
-		if page == "1" {
-			pages[i] = startPage
-		} else {
-			pages[i] = "https://www.kino.de/filme/aktuell/page/" + page + "/?sp_country=deutschland"
-		}
+	global := Global{
+		Bot:  bot,
+		File: filename,
 	}
 
-	movies := []Movie{}
-	rank := 0
-
-	for _, link := range pages {
-		movies = append(movies, getPage(link, &rank)...)
-		time.Sleep(2 * time.Second)
-	}
-
-	b, _ := json.Marshal(movies)
-	fmt.Println(string(b))
-}
-
-func getPage(link string, rank *int) (movies []Movie) {
-	resp, err := http.Get(link)
-	if err != nil {
-		panic(err)
-	}
-	root, err := html.Parse(resp.Body)
-	if err != nil {
-		panic(err)
-	}
-
-	lists := scrape.FindAll(root, scrape.ByClass("alice-teaser-media"))
-	for _, list := range lists {
-		*rank++
-		movie := Movie{
-			Description: scrape.Text(list.NextSibling.FirstChild.NextSibling),
-			Link:        "https:" + scrape.Attr(list.NextSibling.FirstChild.FirstChild, "href"),
-			Poster:      "https:" + scrape.Attr(list.FirstChild.FirstChild, "data-src"),
-			Rank:        *rank,
-			Title:       scrape.Text(list.NextSibling.FirstChild.FirstChild),
-		}
-		movies = append(movies, movie)
-	}
-
-	return
+	r := gin.Default()
+	r.POST("/hook", global.handleHook)
+	r.GET("/health", func(c *gin.Context) {
+		c.JSON(200, nil)
+	})
+	r.Run()
 }
