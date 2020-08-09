@@ -3,8 +3,12 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"io/ioutil"
+	"os"
+	"time"
 
 	"github.com/Donnie/PickFlick/bot"
+	"github.com/Donnie/PickFlick/scraper"
 	"github.com/gin-gonic/gin"
 )
 
@@ -52,6 +56,26 @@ func (glob *Global) handleCallback(call CallbackQuery) {
 		bot.Button{Label: "yes", Value: "yes"},
 		bot.Button{Label: "no", Value: "no"},
 	})
+}
+
+func (glob *Global) handleScrape() {
+	layout := "2006-01-02.json"
+	filename := time.Now().Format(layout)
+
+	file, err := os.Open(filename)
+	if err != nil {
+		scraper.Save(filename)
+		file, err = os.Open(filename)
+		check(err)
+	}
+	defer file.Close()
+
+	var movies []scraper.Movie
+	jsonBytes, _ := ioutil.ReadAll(file)
+	json.Unmarshal(jsonBytes, &movies)
+
+	glob.Movies = movies
+	glob.File = filename
 }
 
 func check(e error) {

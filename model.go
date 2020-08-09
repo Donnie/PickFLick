@@ -1,11 +1,15 @@
 package main
 
-import "github.com/Donnie/PickFlick/bot"
+import (
+	"github.com/Donnie/PickFlick/bot"
+	"github.com/Donnie/PickFlick/scraper"
+)
 
 // Global holds fundamental items
 type Global struct {
-	Bot  bot.Cl
-	File string
+	Bot    bot.Cl
+	File   string
+	Movies []scraper.Movie
 }
 
 // Input struct
