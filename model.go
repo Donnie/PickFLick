@@ -1,28 +1,29 @@
 package main
 
-import (
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
-)
+import "github.com/Donnie/PickFlick/bot"
 
 // Global holds fundamental items
 type Global struct {
-	Bot  *tgbotapi.BotAPI
+	Bot  bot.Cl
 	File string
 }
 
 // Input struct
 type Input struct {
-	UpdateID *int64   `json:"update_id"`
-	Message  *Message `json:"message"`
+	UpdateID      *int64         `json:"update_id"`
+	CallbackQuery *CallbackQuery `json:"callback_query"`
+	Message       *Message       `json:"message"`
 }
 
 // Message struct
 type Message struct {
-	MessageID *int64  `json:"message_id"`
-	From      *From   `json:"from"`
-	Chat      *Chat   `json:"chat"`
-	Date      *int64  `json:"date"`
-	Text      *string `json:"text"`
+	MessageID      *int64       `json:"message_id"`
+	From           *From        `json:"from"`
+	Chat           *Chat        `json:"chat"`
+	Date           *int64       `json:"date"`
+	ReplyToMessage *Message     `json:"reply_to_message"`
+	ReplyMarkup    *ReplyMarkup `json:"reply_markup"`
+	Text           *string      `json:"text"`
 }
 
 // From struct
@@ -42,4 +43,24 @@ type Chat struct {
 	LastName  *string `json:"last_name"`
 	Username  *string `json:"username"`
 	Type      *string `json:"type"`
+}
+
+// CallbackQuery struct
+type CallbackQuery struct {
+	ID           *string  `json:"id"`
+	From         *From    `json:"from"`
+	Message      *Message `json:"message"`
+	ChatInstance *string  `json:"chat_instance"`
+	Data         *string  `json:"data"`
+}
+
+// ReplyMarkup struct
+type ReplyMarkup struct {
+	InlineKeyboard *[][]InlineKeyboard `json:"inline_keyboard"`
+}
+
+// InlineKeyboard struct
+type InlineKeyboard struct {
+	Text         *string `json:"text"`
+	CallbackData *string `json:"callback_data"`
 }

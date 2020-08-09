@@ -6,6 +6,7 @@ import (
 	"os"
 	"strconv"
 
+	"github.com/Donnie/PickFlick/bot"
 	"github.com/gin-gonic/gin"
 	tg "github.com/go-telegram-bot-api/telegram-bot-api"
 	"github.com/joho/godotenv"
@@ -32,19 +33,21 @@ func main() {
 		os.Exit(1)
 	}
 
-	bot, err := tg.NewBotAPI(teleToken)
+	tgbot, err := tg.NewBotAPI(teleToken)
 	if err != nil {
 		log.Panic(err)
 	}
-	bot.Debug, _ = strconv.ParseBool(os.Getenv("DEBUG"))
+	tgbot.Debug, _ = strconv.ParseBool(os.Getenv("DEBUG"))
 
-	global := Global{
-		Bot:  bot,
+	glob := Global{
+		Bot: bot.Cl{
+			Bot: tgbot,
+		},
 		File: filename,
 	}
 
 	r := gin.Default()
-	r.POST("/hook", global.handleHook)
+	r.POST("/hook", glob.handleHook)
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(200, nil)
 	})

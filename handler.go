@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 
+	"github.com/Donnie/PickFlick/bot"
 	"github.com/gin-gonic/gin"
-	tg "github.com/go-telegram-bot-api/telegram-bot-api"
 )
 
 func (glob *Global) handleHook(c *gin.Context) {
@@ -18,21 +18,40 @@ func (glob *Global) handleHook(c *gin.Context) {
 	err := json.Unmarshal([]byte(str), &input)
 	check(err)
 
-	msg := *input.Message.Text
-	glob.sendMessage(*input.Message.Chat.ID, msg, input.Message.MessageID)
+	if input.Message != nil && input.Message.Text != nil {
+		glob.handleMessage(*input.Message)
+	}
+
+	if input.CallbackQuery != nil && input.CallbackQuery.Data != nil {
+		glob.handleCallback(*input.CallbackQuery)
+	}
 
 	c.JSON(200, nil)
 }
 
-func (glob *Global) sendMessage(chatID int64, text string, messageID *int64) {
-	msg := tg.NewMessage(chatID, text)
-	msg.ParseMode = "Markdown"
-	msg.DisableWebPagePreview = true
+func (glob *Global) handleMessage(msg Message) {
+	text := msg.Text
+	chatID := msg.Chat.ID
+	replyID := msg.MessageID
 
-	if messageID != nil {
-		msg.ReplyToMessageID = int(*messageID)
-	}
-	glob.Bot.Send(msg)
+	glob.Bot.SendNew(*chatID, replyID, *text, &[]bot.Button{
+		bot.Button{Label: "yes", Value: "yes"},
+		bot.Button{Label: "no", Value: "no"},
+	})
+}
+
+func (glob *Global) handleCallback(call CallbackQuery) {
+	text := call.Data
+	callID := call.ID
+	chatID := call.Message.Chat.ID
+	messageID := call.Message.MessageID
+
+	glob.Bot.ConfirmCallback(*callID)
+
+	glob.Bot.SendEdit(*chatID, *messageID, *text, &[]bot.Button{
+		bot.Button{Label: "yes", Value: "yes"},
+		bot.Button{Label: "no", Value: "no"},
+	})
 }
 
 func check(e error) {
