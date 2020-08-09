@@ -2,7 +2,7 @@ package scraper
 
 import (
 	"encoding/json"
-	"fmt"
+	"io/ioutil"
 	"net/http"
 	"strings"
 	"time"
@@ -20,9 +20,9 @@ type Movie struct {
 	Title       string `json:"title"`
 }
 
-var startPage = "https://www.kino.de/filme/aktuell/?sp_country=deutschland"
-
-func main() {
+// Save scrapes the website and saves data locally as json to a file
+func Save(file string) {
+	var startPage = "https://www.kino.de/filme/aktuell/?sp_country=deutschland"
 	// request and parse Kino.DE
 	resp, err := http.Get(startPage)
 	if err != nil {
@@ -54,8 +54,8 @@ func main() {
 		time.Sleep(2 * time.Second)
 	}
 
-	b, _ := json.Marshal(movies)
-	fmt.Println(string(b))
+	data, _ := json.MarshalIndent(movies, "", " ")
+	ioutil.WriteFile(file, data, 0644)
 }
 
 func getPage(link string, rank *int) (movies []Movie) {
