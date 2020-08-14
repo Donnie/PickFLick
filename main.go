@@ -27,6 +27,11 @@ func main() {
 		fmt.Println("Add TELEGRAM_TOKEN to .env file")
 		os.Exit(1)
 	}
+	dbFile, exists := os.LookupEnv("DBFILE")
+	if !exists {
+		fmt.Println("Add DBFILE to .env file")
+		os.Exit(1)
+	}
 
 	tgbot, err := tg.NewBotAPI(teleToken)
 	if err != nil {
@@ -38,6 +43,7 @@ func main() {
 		Bot: bot.Cl{
 			Bot: tgbot,
 		},
+		File: dbFile,
 	}
 	glob.handleScrape()
 
