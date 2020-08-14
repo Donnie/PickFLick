@@ -170,7 +170,7 @@ func (glob *Global) getRoom(chatID int64) (room string) {
 		lineChatID, _ := strconv.ParseInt(line[0], 10, 64)
 		if chatID == lineChatID {
 			room = line[2]
-			// get the last room id
+			break
 		}
 	}
 	return
