@@ -47,7 +47,7 @@ func (glob *Global) handleMessage(msg Message) {
 	if actionable {
 		glob.handleAction(*chatID, replyID, context, *text)
 	}
-	output, buttons := glob.genResponse(context, *text, *chatID)
+	output, buttons, _ := glob.genResponse(context, *text, *chatID)
 
 	glob.Bot.SendNew(*chatID, replyID, output, buttons)
 }
@@ -64,7 +64,7 @@ func (glob *Global) handleCallback(call CallbackQuery) {
 	if actionable {
 		glob.handleAction(*chatID, messageID, context, *text)
 	}
-	output, buttons := glob.genResponse(context, *text, *chatID)
+	output, buttons, _ := glob.genResponse(context, *text, *chatID)
 
 	glob.Bot.SendEdit(*chatID, *messageID, output, buttons)
 }
@@ -73,28 +73,31 @@ func (glob *Global) detectContext(chatID int64, text string) (context string, ac
 	step := glob.getStep(chatID)
 	if strings.Contains(text, "/start") {
 		context = "start"
+		return
 	}
 	if strings.Contains(text, "create-room") {
 		context = text
 		actionable = true
+		return
 	}
 	if strings.Contains(text, "enter-room") {
 		context = text
 		actionable = true
+		return
 	}
 	if len(text) == 3 && step == 1 {
 		context = "join-room"
 		actionable = true
+		return
 	}
 	return
 }
 
-func (glob *Global) genResponse(context, text string, chatID int64) (response string, options *[]bot.Button) {
+func (glob *Global) genResponse(context, text string, chatID int64) (response string, options *[]bot.Button, edit bool) {
 	switch context {
 	case "start":
 		// first clean all past records
-		file.UpdateLineCSV(nil, glob.File, strconv.FormatInt(chatID, 10), 0)
-
+		glob.init(chatID)
 		response = "Create a room or enter an existing room?"
 		options = &[]bot.Button{
 			bot.Button{Label: "Create", Value: "create-room"},
@@ -103,9 +106,17 @@ func (glob *Global) genResponse(context, text string, chatID int64) (response st
 	case "create-room":
 		room := glob.getRoom(chatID)
 		if room == "" {
-			response = "We could not create a room for you"
+			response = "We could not create a room for you. Try again?"
+			options = &[]bot.Button{
+				bot.Button{Label: "Try again!", Value: "create-room"},
+				bot.Button{Label: "Enter", Value: "enter-room"},
+			}
+			edit = true
 		} else {
 			response = "Here is your room number: ```" + room + "```.\nNow share it with your friends."
+			options = &[]bot.Button{
+				bot.Button{Label: "Done", Value: "done"},
+			}
 		}
 	case "enter-room":
 		response = "Okay tell me the room number?"
@@ -113,11 +124,19 @@ func (glob *Global) genResponse(context, text string, chatID int64) (response st
 		room := glob.getRoom(chatID)
 		if room == "" {
 			response = "We could not find a room by that number"
+			options = &[]bot.Button{
+				bot.Button{Label: "Create", Value: "create-room"},
+				bot.Button{Label: "Enter", Value: "enter-room"},
+			}
+			edit = true
 		} else {
 			response = "Room found!"
+			options = &[]bot.Button{
+				bot.Button{Label: "Continue", Value: "done"},
+			}
 		}
 	default:
-		response = "I still don't understand you"
+		response = "I didn't get you"
 	}
 	return
 }
@@ -125,12 +144,14 @@ func (glob *Global) genResponse(context, text string, chatID int64) (response st
 func (glob *Global) handleAction(chatID int64, messageID *int64, context, text string) {
 	switch context {
 	case "create-room":
+		glob.init(chatID)
 		file.WriteLineCSV([]string{
 			strconv.FormatInt(chatID, 10),
 			"1",
 			genRoomNum(),
 		}, glob.File)
 	case "enter-room":
+		glob.init(chatID)
 		// register step 1
 		file.WriteLineCSV([]string{
 			strconv.FormatInt(chatID, 10),
@@ -148,13 +169,18 @@ func (glob *Global) handleAction(chatID int64, messageID *int64, context, text s
 	}
 }
 
+func (glob *Global) init(chatID int64) {
+	// clear previous chats
+	file.UpdateLineCSV(nil, glob.File, strconv.FormatInt(chatID, 10), 0)
+}
+
 func (glob *Global) isRoom(room string) bool {
 	mem, err := file.ReadCSV(glob.File)
 	if err != nil {
 		return false
 	}
 	for _, line := range mem {
-		if room == line[2] {
+		if len(line) == 3 && room == line[2] {
 			return true
 		}
 	}
