@@ -48,7 +48,10 @@ func (glob *Global) handleMessage(msg Message) {
 	if actionable {
 		glob.handleAction(*chatID, replyID, context, *text)
 	}
-	output, buttons, _ := glob.genResponse(context, *text, *chatID)
+	output, buttons, _, image := glob.genResponse(context, *text, *chatID)
+	if image != "" {
+		glob.Bot.SendPhoto(*chatID, image, output, buttons)
+	}
 
 	glob.Bot.SendNew(*chatID, replyID, output, buttons)
 }
@@ -59,19 +62,23 @@ func (glob *Global) handleCallback(call CallbackQuery) {
 	chatID := call.Message.Chat.ID
 	messageID := call.Message.MessageID
 
-	toasts := []string{"Okay!", "Cool!", "Alright!", "Fine!", "Hmmm!"}
-	glob.Bot.ConfirmCallback(*callID, toasts[randInt(0, 4)])
-
 	context, actionable := glob.detectContext(*chatID, *text)
 	if actionable {
 		glob.handleAction(*chatID, messageID, context, *text)
 	}
-	output, buttons, edit := glob.genResponse(context, *text, *chatID)
-	if edit {
-		glob.Bot.SendEdit(*chatID, *messageID, output, buttons)
+	output, buttons, edit, image := glob.genResponse(context, *text, *chatID)
+	if image != "" {
+		glob.Bot.SendPhoto(*chatID, image, output, buttons)
 	} else {
-		glob.Bot.SendNew(*chatID, nil, output, buttons)
+		if edit {
+			glob.Bot.SendEdit(*chatID, *messageID, output, buttons)
+		} else {
+			glob.Bot.SendNew(*chatID, nil, output, buttons)
+		}
 	}
+
+	toasts := []string{"Okay!", "Cool!", "Alright!", "Fine!", "Hmmm!"}
+	glob.Bot.ConfirmCallback(*callID, toasts[randInt(0, 4)])
 }
 
 func (glob *Global) detectContext(chatID int64, text string) (context string, actionable bool) {
@@ -182,7 +189,7 @@ func (glob *Global) handleAction(chatID int64, messageID *int64, context, text s
 	}
 }
 
-func (glob *Global) genResponse(context, text string, chatID int64) (response string, options *[]bot.Button, edit bool) {
+func (glob *Global) genResponse(context, text string, chatID int64) (response string, options *[]bot.Button, edit bool, image string) {
 	room := glob.getRoom(chatID)
 
 	switch context {
@@ -239,43 +246,55 @@ func (glob *Global) genResponse(context, text string, chatID int64) (response st
 			bot.Button{Label: "Start Again", Value: "/start"},
 		}
 	case "start-choice":
-		response = "First movie:\n\n" + glob.Movies[0].Title +
-			"\n\n" + glob.Movies[0].Description
+		response = fmt.Sprintf(
+			"First movie:\n\n%d. %s\n\n%s",
+			1,
+			glob.Movies[0].Title,
+			glob.Movies[0].Description,
+		)
 		options = &[]bot.Button{
 			bot.Button{Label: "👎", Value: "discard-1"},
 			bot.Button{Label: "👍", Value: "like-1"},
 		}
 		edit = true
+		image = glob.Movies[0].Poster
 	case "discard", "like":
 		step := glob.getStep(chatID)
-		movieStep := strings.Split(step, "-")[1]
-		movieNum, _ := strconv.Atoi(movieStep)
+		movieNum, _ := strconv.Atoi(strings.Split(step, "-")[1])
 		switch context {
 		case "discard":
-			response = "Okay! Next:\n\n" + movieStep + ". " + glob.Movies[movieNum-1].Title +
-				"\n\n" + glob.Movies[movieNum].Description
+			response = fmt.Sprintf(
+				"Okay! Next:\n\n%d. %s\n\n%s\n",
+				movieNum,
+				glob.Movies[movieNum-1].Title,
+				glob.Movies[movieNum-1].Description,
+			)
 		case "like":
-			response = "Let's find more! Next!:\n\n" + movieStep + ". " + glob.Movies[movieNum-1].Title +
-				"\n\n" + glob.Movies[movieNum].Description
+			response = fmt.Sprintf(
+				"Okay! Next:\n\n%d. %s\n\n%s\n",
+				movieNum,
+				glob.Movies[movieNum-1].Title,
+				glob.Movies[movieNum-1].Description,
+			)
 		}
 		options = &[]bot.Button{
-			bot.Button{Label: "👎", Value: "discard-" + movieStep},
-			bot.Button{Label: "👍", Value: "like-" + movieStep},
+			bot.Button{Label: "👎", Value: fmt.Sprintf("discard-%d", movieNum)},
+			bot.Button{Label: "👍", Value: fmt.Sprintf("like-%d", movieNum)},
 		}
 		edit = true
+		image = glob.Movies[movieNum-1].Poster
 	case "choice-made":
 		response = "Great you are done choosing!"
 		options = &[]bot.Button{
 			bot.Button{Label: "Results?", Value: "show-result"},
 			bot.Button{Label: "Choose Again", Value: "start-choice"},
 		}
-		edit = true
 	case "show-result":
 		mergedChoice := mergeChoices(glob.getChoices(room))
 		movieList := glob.getMovieList(mergedChoice)
 
 		if len(movieList) > 0 {
-			response = "So you have chosen:\n\n"
+			response = "So your room has chosen:\n\n"
 			for i, movie := range movieList {
 				response = response + fmt.Sprintf("%d. [%s](%s)\n", i+1, movie.Title, movie.Link)
 			}

@@ -1,6 +1,12 @@
 package bot
 
-import tg "github.com/go-telegram-bot-api/telegram-bot-api"
+import (
+	"bytes"
+	"io/ioutil"
+	"net/http"
+
+	tg "github.com/go-telegram-bot-api/telegram-bot-api"
+)
 
 // Button struct
 type Button struct {
@@ -62,4 +68,24 @@ func (cl *Cl) SendEdit(chatID, messageID int64, text string, buttons *[]Button) 
 // ConfirmCallback sends a callback toast
 func (cl *Cl) ConfirmCallback(callID, response string) {
 	cl.Bot.AnswerCallbackQuery(tg.NewCallback(callID, response))
+}
+
+// SendPhoto sends a new Telegram photo
+func (cl *Cl) SendPhoto(chatID int64, photolink string, text string, buttons *[]Button) (m tg.Message) {
+	resp, _ := http.Get(photolink)
+	data, _ := ioutil.ReadAll(resp.Body)
+	file := tg.FileReader{Name: "Name", Reader: bytes.NewReader(data), Size: int64(len(data))}
+	defer resp.Body.Close()
+
+	msg := tg.NewPhotoUpload(chatID, file)
+	msg.Caption = text
+	msg.ParseMode = "Markdown"
+
+	if buttons != nil {
+		markup := tg.NewInlineKeyboardMarkup(makeButtons(*buttons))
+		msg.ReplyMarkup = &markup
+	}
+
+	m, _ = cl.Bot.Send(msg)
+	return
 }
