@@ -258,7 +258,11 @@ func (glob *Global) genResponse(context, text string, chatID int64) (response st
 		}
 	case "show-result":
 		mergedChoice := mergeChoices(glob.getChoices(room))
-		response = fmt.Sprintf("Great %v", mergedChoice)
+		movieList := glob.getMovieList(mergedChoice)
+		response = "So you have chosen:\n\n"
+		for i, movie := range movieList {
+			response = response + fmt.Sprintf("%d. [%s](%s)\n", i+1, movie.Title, movie.Link)
+		}
 		options = &[]bot.Button{
 			bot.Button{Label: "Results?", Value: "show-result"},
 			bot.Button{Label: "Choose Again", Value: "start-choice"},
@@ -347,7 +351,8 @@ func (glob *Global) getChoices(roomID string) (choices [][]int) {
 	return
 }
 
-func mergeChoices(choices [][]int) (merged [10]int) {
+func mergeChoices(choices [][]int) (merged []int) {
+	merged = []int{0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
 	for i := range choices[0] {
 		crossSec := getCrossSection(choices, i)
 		if !bothValues(crossSec, 0, 1) {
@@ -367,6 +372,15 @@ func getCrossSection(matrix [][]int, col int) (crossSec []int) {
 func bothValues(array []int, value1, value2 int) (bo bool) {
 	bo = strings.Contains(fmt.Sprintf("%v", array), fmt.Sprintf("%d", value1)) &&
 		strings.Contains(fmt.Sprintf("%v", array), fmt.Sprintf("%d", value2))
+	return
+}
+
+func (glob *Global) getMovieList(choice []int) (movies []scraper.Movie) {
+	for i, ch := range choice {
+		if ch == 1 {
+			movies = append(movies, glob.Movies[i])
+		}
+	}
 	return
 }
 
