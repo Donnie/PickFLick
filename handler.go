@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 	"unsafe"
 
@@ -84,7 +85,7 @@ func (glob *Global) detectContext(chatID int64, text string) (context string, ac
 		actionable = true
 		return
 	}
-	if len(text) == 3 && step == 1 {
+	if len(text) == 3 && step == "1" {
 		context = "join-room"
 		actionable = true
 		return
@@ -101,9 +102,65 @@ func (glob *Global) detectContext(chatID int64, text string) (context string, ac
 	}
 	if text == "start-choice" {
 		context = text
+		actionable = true
+		return
+	}
+	if strings.Contains(text, "discard") {
+		context = "discard"
+		actionable = true
+		return
+	}
+	if strings.Contains(text, "like") {
+		context = "like"
+		actionable = true
 		return
 	}
 	return
+}
+
+func (glob *Global) handleAction(chatID int64, messageID *int64, context, text string) {
+	switch context {
+	case "create-room":
+		glob.init(chatID)
+		file.WriteLineCSV([]string{
+			strconv.FormatInt(chatID, 10),
+			"1",
+			genRoomNum(),
+		}, glob.File)
+	case "enter-room":
+		glob.init(chatID)
+		// register step 1
+		file.WriteLineCSV([]string{
+			strconv.FormatInt(chatID, 10),
+			"1",
+			"",
+		}, glob.File)
+	case "join-room":
+		if glob.isRoom(text) {
+			file.UpdateLineCSV([]string{
+				strconv.FormatInt(chatID, 10),
+				"1",
+				text,
+			}, glob.File, strconv.FormatInt(chatID, 10), 0)
+		}
+	case "done":
+		glob.handleScrape()
+	case "start-choice":
+		room := glob.getRoom(chatID)
+		file.UpdateLineCSV([]string{
+			strconv.FormatInt(chatID, 10),
+			"2-1",
+			room,
+		}, glob.File, strconv.FormatInt(chatID, 10), 0)
+	case "discard", "like":
+		room := glob.getRoom(chatID)
+		movieStep, _ := strconv.Atoi(strings.Split(text, "-")[1])
+		file.UpdateLineCSV([]string{
+			strconv.FormatInt(chatID, 10),
+			"2-" + strconv.Itoa(movieStep+1),
+			room,
+		}, glob.File, strconv.FormatInt(chatID, 10), 0)
+	}
 }
 
 func (glob *Global) genResponse(context, text string, chatID int64) (response string, options *[]bot.Button, edit bool) {
@@ -149,7 +206,7 @@ func (glob *Global) genResponse(context, text string, chatID int64) (response st
 			}
 		}
 	case "done":
-		response = "Now I would show you 10 movies. And you would need to say if you want to watch it or not. Alright?"
+		response = "Now I would show you a few movies. And you would need to say if you want to watch it or not. Alright?"
 		options = &[]bot.Button{
 			bot.Button{Label: "Cool!", Value: "start-choice"},
 			bot.Button{Label: "Meh!", Value: "exit"},
@@ -159,40 +216,37 @@ func (glob *Global) genResponse(context, text string, chatID int64) (response st
 		options = &[]bot.Button{
 			bot.Button{Label: "Start Again", Value: "/start"},
 		}
+	case "start-choice":
+		response = "First movie:\n\n" + glob.Movies[0].Title +
+			"\n\n" + glob.Movies[0].Description
+		options = &[]bot.Button{
+			bot.Button{Label: "Discard", Value: "discard-1"},
+			bot.Button{Label: "Like", Value: "like-1"},
+		}
+	case "discard":
+		step := glob.getStep(chatID)
+		movieStep := strings.Split(step, "-")[1]
+		movieNum, _ := strconv.Atoi(movieStep)
+		response = "Okay! Next:\n\n" + movieStep + ". " + glob.Movies[movieNum].Title +
+			"\n\n" + glob.Movies[movieNum].Description
+		options = &[]bot.Button{
+			bot.Button{Label: "Discard", Value: "discard-" + movieStep},
+			bot.Button{Label: "Like", Value: "like-" + movieStep},
+		}
+	case "like":
+		step := glob.getStep(chatID)
+		movieStep := strings.Split(step, "-")[1]
+		movieNum, _ := strconv.Atoi(movieStep)
+		response = "Let's find more! Next!:\n\n" + movieStep + ". " + glob.Movies[movieNum].Title +
+			"\n\n" + glob.Movies[movieNum].Description
+		options = &[]bot.Button{
+			bot.Button{Label: "Discard", Value: "discard-" + movieStep},
+			bot.Button{Label: "Like", Value: "like-" + movieStep},
+		}
 	default:
 		response = "I didn't get you"
 	}
 	return
-}
-
-func (glob *Global) handleAction(chatID int64, messageID *int64, context, text string) {
-	switch context {
-	case "create-room":
-		glob.init(chatID)
-		file.WriteLineCSV([]string{
-			strconv.FormatInt(chatID, 10),
-			"1",
-			genRoomNum(),
-		}, glob.File)
-	case "enter-room":
-		glob.init(chatID)
-		// register step 1
-		file.WriteLineCSV([]string{
-			strconv.FormatInt(chatID, 10),
-			"1",
-			"",
-		}, glob.File)
-	case "join-room":
-		if glob.isRoom(text) {
-			file.UpdateLineCSV([]string{
-				strconv.FormatInt(chatID, 10),
-				"1",
-				text,
-			}, glob.File, strconv.FormatInt(chatID, 10), 0)
-		}
-	case "done":
-		glob.handleScrape()
-	}
 }
 
 func (glob *Global) init(chatID int64) {
@@ -228,15 +282,15 @@ func (glob *Global) getRoom(chatID int64) (room string) {
 	return
 }
 
-func (glob *Global) getStep(chatID int64) (step int) {
+func (glob *Global) getStep(chatID int64) (step string) {
 	mem, err := file.ReadCSV(glob.File)
 	if err != nil {
-		return 0
+		return ""
 	}
 	for _, line := range mem {
 		lineChatID, _ := strconv.ParseInt(line[0], 10, 64)
 		if chatID == lineChatID {
-			step, _ = strconv.Atoi(line[1])
+			step = line[1]
 			break
 		}
 	}
