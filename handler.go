@@ -58,7 +58,7 @@ func (glob *Global) handleCallback(call CallbackQuery) {
 	chatID := call.Message.Chat.ID
 	messageID := call.Message.MessageID
 
-	glob.Bot.ConfirmCallback(*callID)
+	glob.Bot.ConfirmCallback(*callID, "Okay!")
 
 	context, actionable := glob.detectContext(*chatID, *text)
 	if actionable {
@@ -90,7 +90,7 @@ func (glob *Global) detectContext(chatID int64, text string) (context string, ac
 		actionable = true
 		return
 	}
-	if text == "done" {
+	if text == "room-found" {
 		context = text
 		actionable = true
 		return
@@ -105,13 +105,18 @@ func (glob *Global) detectContext(chatID int64, text string) (context string, ac
 		actionable = true
 		return
 	}
-	if strings.Contains(text, "discard") {
+	if strings.Contains(text, "discard") && step != "2-10" {
 		context = "discard"
 		actionable = true
 		return
 	}
-	if strings.Contains(text, "like") {
+	if strings.Contains(text, "like") && step != "2-10" {
 		context = "like"
+		actionable = true
+		return
+	}
+	if step == "2-10" {
+		context = "choice-made"
 		actionable = true
 		return
 	}
@@ -139,26 +144,15 @@ func (glob *Global) handleAction(chatID int64, messageID *int64, context, text s
 		}, glob.File)
 	case "join-room":
 		if glob.isRoom(text) {
-			file.UpdateLineCSV([]string{
-				strconv.FormatInt(chatID, 10),
-				"1",
-				text,
-				"[0,0,0,0,0,0,0,0,0,0]",
-			}, glob.File, strconv.FormatInt(chatID, 10), 0)
+			file.UpdateColCSV(text, 2, strconv.FormatInt(chatID, 10), 0, glob.File)
 		}
-	case "done":
+	case "room-found":
 		glob.handleScrape()
 	case "start-choice":
-		room := glob.getRoom(chatID)
-		file.UpdateLineCSV([]string{
-			strconv.FormatInt(chatID, 10),
-			"2-1",
-			room,
-			"[0,0,0,0,0,0,0,0,0,0]",
-		}, glob.File, strconv.FormatInt(chatID, 10), 0)
+		file.UpdateColCSV("2-1", 1, strconv.FormatInt(chatID, 10), 0, glob.File)
 	case "discard", "like":
-		room := glob.getRoom(chatID)
 		movieStep, _ := strconv.Atoi(strings.Split(text, "-")[1])
+		file.UpdateColCSV("2-"+strconv.Itoa(movieStep+1), 1, strconv.FormatInt(chatID, 10), 0, glob.File)
 
 		choice := glob.getChoice(chatID)
 		switch context {
@@ -168,13 +162,9 @@ func (glob *Global) handleAction(chatID int64, messageID *int64, context, text s
 			choice[movieStep-1] = 1
 		}
 		choiceStr, _ := json.Marshal(choice)
-
-		file.UpdateLineCSV([]string{
-			strconv.FormatInt(chatID, 10),
-			"2-" + strconv.Itoa(movieStep+1),
-			room,
-			string(choiceStr),
-		}, glob.File, strconv.FormatInt(chatID, 10), 0)
+		file.UpdateColCSV(string(choiceStr), 3, strconv.FormatInt(chatID, 10), 0, glob.File)
+	case "choice-made":
+		file.UpdateColCSV("3", 1, strconv.FormatInt(chatID, 10), 0, glob.File)
 	}
 }
 
@@ -200,7 +190,7 @@ func (glob *Global) genResponse(context, text string, chatID int64) (response st
 		} else {
 			response = "Here is your room number: ```" + room + "```.\nNow share it with your friends."
 			options = &[]bot.Button{
-				bot.Button{Label: "Done", Value: "done"},
+				bot.Button{Label: "Done", Value: "room-found"},
 			}
 		}
 	case "enter-room":
@@ -217,10 +207,10 @@ func (glob *Global) genResponse(context, text string, chatID int64) (response st
 		} else {
 			response = "Room found!"
 			options = &[]bot.Button{
-				bot.Button{Label: "Continue", Value: "done"},
+				bot.Button{Label: "Continue", Value: "room-found"},
 			}
 		}
-	case "done":
+	case "room-found":
 		response = "Now I would show you a few movies. And you would need to say if you want to watch it or not. Alright?"
 		options = &[]bot.Button{
 			bot.Button{Label: "Cool!", Value: "start-choice"},
@@ -254,6 +244,8 @@ func (glob *Global) genResponse(context, text string, chatID int64) (response st
 			bot.Button{Label: "Discard", Value: "discard-" + movieStep},
 			bot.Button{Label: "Like", Value: "like-" + movieStep},
 		}
+	case "choice-made":
+		response = "Great you are done choosing!"
 	default:
 		response = "I didn't get you"
 	}

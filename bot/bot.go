@@ -60,6 +60,6 @@ func (cl *Cl) SendEdit(chatID, messageID int64, text string, buttons *[]Button) 
 }
 
 // ConfirmCallback sends a callback toast
-func (cl *Cl) ConfirmCallback(callID string) {
-	cl.Bot.AnswerCallbackQuery(tg.NewCallback(callID, "cool"))
+func (cl *Cl) ConfirmCallback(callID, response string) {
+	cl.Bot.AnswerCallbackQuery(tg.NewCallback(callID, response))
 }
