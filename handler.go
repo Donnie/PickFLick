@@ -245,38 +245,16 @@ func (glob *Global) genResponse(context, text string, chatID int64) (response st
 		options = &[]bot.Button{
 			bot.Button{Label: "Start Again", Value: "/start"},
 		}
-	case "start-choice":
-		response = fmt.Sprintf(
-			"First movie:\n\n%d. %s\n\n%s",
-			1,
-			glob.Movies[0].Title,
-			glob.Movies[0].Description,
-		)
-		options = &[]bot.Button{
-			bot.Button{Label: "👎", Value: "discard-1"},
-			bot.Button{Label: "👍", Value: "like-1"},
-		}
-		edit = true
-		image = glob.Movies[0].Poster
-	case "discard", "like":
+	case "start-choice", "discard", "like":
 		step := glob.getStep(chatID)
 		movieNum, _ := strconv.Atoi(strings.Split(step, "-")[1])
-		switch context {
-		case "discard":
-			response = fmt.Sprintf(
-				"Okay! Next:\n\n%d. %s\n\n%s\n",
-				movieNum,
-				glob.Movies[movieNum-1].Title,
-				glob.Movies[movieNum-1].Description,
-			)
-		case "like":
-			response = fmt.Sprintf(
-				"Okay! Next:\n\n%d. %s\n\n%s\n",
-				movieNum,
-				glob.Movies[movieNum-1].Title,
-				glob.Movies[movieNum-1].Description,
-			)
-		}
+		response = fmt.Sprintf(
+			"%d. [%s](%s)\n\n%s\n",
+			movieNum,
+			glob.Movies[movieNum-1].Title,
+			glob.Movies[movieNum-1].Link,
+			glob.Movies[movieNum-1].Description,
+		)
 		options = &[]bot.Button{
 			bot.Button{Label: "👎", Value: fmt.Sprintf("discard-%d", movieNum)},
 			bot.Button{Label: "👍", Value: fmt.Sprintf("like-%d", movieNum)},
