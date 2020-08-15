@@ -66,9 +66,12 @@ func (glob *Global) handleCallback(call CallbackQuery) {
 	if actionable {
 		glob.handleAction(*chatID, messageID, context, *text)
 	}
-	output, buttons, _ := glob.genResponse(context, *text, *chatID)
-
-	glob.Bot.SendEdit(*chatID, *messageID, output, buttons)
+	output, buttons, edit := glob.genResponse(context, *text, *chatID)
+	if edit {
+		glob.Bot.SendEdit(*chatID, *messageID, output, buttons)
+	} else {
+		glob.Bot.SendNew(*chatID, nil, output, buttons)
+	}
 }
 
 func (glob *Global) detectContext(chatID int64, text string) (context string, actionable bool) {
@@ -124,6 +127,11 @@ func (glob *Global) detectContext(chatID int64, text string) (context string, ac
 	}
 	if text == "show-result" && step == "3" {
 		context = "show-result"
+		return
+	}
+	if text == "end" && step == "3" {
+		context = "end"
+		actionable = true
 		return
 	}
 	return
@@ -186,6 +194,7 @@ func (glob *Global) genResponse(context, text string, chatID int64) (response st
 			bot.Button{Label: "Create", Value: "create-room"},
 			bot.Button{Label: "Enter", Value: "enter-room"},
 		}
+		edit = true
 	case "create-room":
 		if room == "" {
 			response = "We could not create a room for you. Try again?"
@@ -193,15 +202,16 @@ func (glob *Global) genResponse(context, text string, chatID int64) (response st
 				bot.Button{Label: "Try again!", Value: "create-room"},
 				bot.Button{Label: "Enter", Value: "enter-room"},
 			}
-			edit = true
 		} else {
 			response = "Here is your room number: ```" + room + "```.\nNow share it with your friends."
 			options = &[]bot.Button{
 				bot.Button{Label: "Done", Value: "room-found"},
 			}
 		}
+		edit = true
 	case "enter-room":
 		response = "Okay tell me the room number?"
+		edit = true
 	case "join-room":
 		if room == "" {
 			response = "We could not find a room by that number"
@@ -217,11 +227,12 @@ func (glob *Global) genResponse(context, text string, chatID int64) (response st
 			}
 		}
 	case "room-found":
-		response = "Now I would show you a few movies. And you would need to say if you want to watch it or not. Alright?"
+		response = "Now I would show you top ten movies this week in Berlin."
 		options = &[]bot.Button{
 			bot.Button{Label: "Meh!", Value: "exit"},
 			bot.Button{Label: "Cool!", Value: "start-choice"},
 		}
+		edit = true
 	case "exit":
 		response = "All clear! Have fun manually deciding movies 😂"
 		options = &[]bot.Button{
@@ -231,41 +242,60 @@ func (glob *Global) genResponse(context, text string, chatID int64) (response st
 		response = "First movie:\n\n" + glob.Movies[0].Title +
 			"\n\n" + glob.Movies[0].Description
 		options = &[]bot.Button{
-			bot.Button{Label: "Ignore", Value: "discard-1"},
-			bot.Button{Label: "Like", Value: "like-1"},
+			bot.Button{Label: "👎", Value: "discard-1"},
+			bot.Button{Label: "👍", Value: "like-1"},
 		}
+		edit = true
 	case "discard", "like":
 		step := glob.getStep(chatID)
 		movieStep := strings.Split(step, "-")[1]
 		movieNum, _ := strconv.Atoi(movieStep)
 		switch context {
 		case "discard":
-			response = "Okay! Next:\n\n" + movieStep + ". " + glob.Movies[movieNum].Title +
+			response = "Okay! Next:\n\n" + movieStep + ". " + glob.Movies[movieNum-1].Title +
 				"\n\n" + glob.Movies[movieNum].Description
 		case "like":
-			response = "Let's find more! Next!:\n\n" + movieStep + ". " + glob.Movies[movieNum].Title +
+			response = "Let's find more! Next!:\n\n" + movieStep + ". " + glob.Movies[movieNum-1].Title +
 				"\n\n" + glob.Movies[movieNum].Description
 		}
 		options = &[]bot.Button{
-			bot.Button{Label: "Discard", Value: "discard-" + movieStep},
-			bot.Button{Label: "Like", Value: "like-" + movieStep},
+			bot.Button{Label: "👎", Value: "discard-" + movieStep},
+			bot.Button{Label: "👍", Value: "like-" + movieStep},
 		}
+		edit = true
 	case "choice-made":
 		response = "Great you are done choosing!"
 		options = &[]bot.Button{
 			bot.Button{Label: "Results?", Value: "show-result"},
 			bot.Button{Label: "Choose Again", Value: "start-choice"},
 		}
+		edit = true
 	case "show-result":
 		mergedChoice := mergeChoices(glob.getChoices(room))
 		movieList := glob.getMovieList(mergedChoice)
-		response = "So you have chosen:\n\n"
-		for i, movie := range movieList {
-			response = response + fmt.Sprintf("%d. [%s](%s)\n", i+1, movie.Title, movie.Link)
+
+		if len(movieList) > 0 {
+			response = "So you have chosen:\n\n"
+			for i, movie := range movieList {
+				response = response + fmt.Sprintf("%d. [%s](%s)\n", i+1, movie.Title, movie.Link)
+			}
+		} else {
+			response = "Sorry! You do not have any common options."
 		}
+		response = response + "\n\nYou can try results again when your friends finish."
+
 		options = &[]bot.Button{
 			bot.Button{Label: "Results?", Value: "show-result"},
 			bot.Button{Label: "Choose Again", Value: "start-choice"},
+			bot.Button{Label: "Exit", Value: "end"},
+		}
+		edit = true
+	case "end":
+		glob.init(chatID)
+		response = "Create a room or enter an existing room?"
+		options = &[]bot.Button{
+			bot.Button{Label: "Create", Value: "create-room"},
+			bot.Button{Label: "Enter", Value: "enter-room"},
 		}
 	default:
 		response = "I didn't get you"
