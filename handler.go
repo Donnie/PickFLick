@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"math/rand"
 	"os"
@@ -121,6 +122,10 @@ func (glob *Global) detectContext(chatID int64, text string) (context string, ac
 		actionable = true
 		return
 	}
+	if text == "show-result" && step == "3" {
+		context = "show-result"
+		return
+	}
 	return
 }
 
@@ -145,15 +150,15 @@ func (glob *Global) handleAction(chatID int64, messageID *int64, context, text s
 		}, glob.File)
 	case "join-room":
 		if glob.isRoom(text) {
-			file.UpdateColCSV(text, 2, strconv.FormatInt(chatID, 10), 0, glob.File)
+			file.UpdateColsCSV(text, 2, strconv.FormatInt(chatID, 10), 0, glob.File)
 		}
 	case "room-found":
 		glob.handleScrape()
 	case "start-choice":
-		file.UpdateColCSV("2-1", 1, strconv.FormatInt(chatID, 10), 0, glob.File)
+		file.UpdateColsCSV("2-1", 1, strconv.FormatInt(chatID, 10), 0, glob.File)
 	case "discard", "like":
 		movieStep, _ := strconv.Atoi(strings.Split(text, "-")[1])
-		file.UpdateColCSV("2-"+strconv.Itoa(movieStep+1), 1, strconv.FormatInt(chatID, 10), 0, glob.File)
+		file.UpdateColsCSV("2-"+strconv.Itoa(movieStep+1), 1, strconv.FormatInt(chatID, 10), 0, glob.File)
 
 		choice := glob.getChoice(chatID)
 		switch context {
@@ -163,13 +168,15 @@ func (glob *Global) handleAction(chatID int64, messageID *int64, context, text s
 			choice[movieStep-1] = 1
 		}
 		choiceStr, _ := json.Marshal(choice)
-		file.UpdateColCSV(string(choiceStr), 3, strconv.FormatInt(chatID, 10), 0, glob.File)
+		file.UpdateColsCSV(string(choiceStr), 3, strconv.FormatInt(chatID, 10), 0, glob.File)
 	case "choice-made":
-		file.UpdateColCSV("3", 1, strconv.FormatInt(chatID, 10), 0, glob.File)
+		file.UpdateColsCSV("3", 1, strconv.FormatInt(chatID, 10), 0, glob.File)
 	}
 }
 
 func (glob *Global) genResponse(context, text string, chatID int64) (response string, options *[]bot.Button, edit bool) {
+	room := glob.getRoom(chatID)
+
 	switch context {
 	case "start":
 		// first clean all past records
@@ -180,7 +187,6 @@ func (glob *Global) genResponse(context, text string, chatID int64) (response st
 			bot.Button{Label: "Enter", Value: "enter-room"},
 		}
 	case "create-room":
-		room := glob.getRoom(chatID)
 		if room == "" {
 			response = "We could not create a room for you. Try again?"
 			options = &[]bot.Button{
@@ -197,7 +203,6 @@ func (glob *Global) genResponse(context, text string, chatID int64) (response st
 	case "enter-room":
 		response = "Okay tell me the room number?"
 	case "join-room":
-		room := glob.getRoom(chatID)
 		if room == "" {
 			response = "We could not find a room by that number"
 			options = &[]bot.Button{
@@ -214,8 +219,8 @@ func (glob *Global) genResponse(context, text string, chatID int64) (response st
 	case "room-found":
 		response = "Now I would show you a few movies. And you would need to say if you want to watch it or not. Alright?"
 		options = &[]bot.Button{
-			bot.Button{Label: "Cool!", Value: "start-choice"},
 			bot.Button{Label: "Meh!", Value: "exit"},
+			bot.Button{Label: "Cool!", Value: "start-choice"},
 		}
 	case "exit":
 		response = "All clear! Have fun manually deciding movies 😂"
@@ -226,7 +231,7 @@ func (glob *Global) genResponse(context, text string, chatID int64) (response st
 		response = "First movie:\n\n" + glob.Movies[0].Title +
 			"\n\n" + glob.Movies[0].Description
 		options = &[]bot.Button{
-			bot.Button{Label: "Discard", Value: "discard-1"},
+			bot.Button{Label: "Ignore", Value: "discard-1"},
 			bot.Button{Label: "Like", Value: "like-1"},
 		}
 	case "discard", "like":
@@ -247,6 +252,17 @@ func (glob *Global) genResponse(context, text string, chatID int64) (response st
 		}
 	case "choice-made":
 		response = "Great you are done choosing!"
+		options = &[]bot.Button{
+			bot.Button{Label: "Results?", Value: "show-result"},
+			bot.Button{Label: "Choose Again", Value: "start-choice"},
+		}
+	case "show-result":
+		mergedChoice := mergeChoices(glob.getChoices(room))
+		response = fmt.Sprintf("Great %v", mergedChoice)
+		options = &[]bot.Button{
+			bot.Button{Label: "Results?", Value: "show-result"},
+			bot.Button{Label: "Choose Again", Value: "start-choice"},
+		}
 	default:
 		response = "I didn't get you"
 	}
@@ -255,7 +271,7 @@ func (glob *Global) genResponse(context, text string, chatID int64) (response st
 
 func (glob *Global) init(chatID int64) {
 	// clear previous chats
-	file.UpdateLineCSV(nil, glob.File, strconv.FormatInt(chatID, 10), 0)
+	file.UpdateLinesCSV(nil, glob.File, strconv.FormatInt(chatID, 10), 0)
 }
 
 func (glob *Global) isRoom(room string) bool {
@@ -313,6 +329,44 @@ func (glob *Global) getChoice(chatID int64) (choice []int) {
 			break
 		}
 	}
+	return
+}
+
+func (glob *Global) getChoices(roomID string) (choices [][]int) {
+	mem, err := file.ReadCSV(glob.File)
+	if err != nil {
+		return
+	}
+	for _, line := range mem {
+		choice := []int{}
+		if roomID == line[2] {
+			json.Unmarshal([]byte(line[3]), &choice)
+			choices = append(choices, choice)
+		}
+	}
+	return
+}
+
+func mergeChoices(choices [][]int) (merged [10]int) {
+	for i := range choices[0] {
+		crossSec := getCrossSection(choices, i)
+		if !bothValues(crossSec, 0, 1) {
+			merged[i] = crossSec[0]
+		}
+	}
+	return
+}
+
+func getCrossSection(matrix [][]int, col int) (crossSec []int) {
+	for i := range matrix {
+		crossSec = append(crossSec, matrix[i][col])
+	}
+	return
+}
+
+func bothValues(array []int, value1, value2 int) (bo bool) {
+	bo = strings.Contains(fmt.Sprintf("%v", array), fmt.Sprintf("%d", value1)) &&
+		strings.Contains(fmt.Sprintf("%v", array), fmt.Sprintf("%d", value2))
 	return
 }
 

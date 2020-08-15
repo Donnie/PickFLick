@@ -51,9 +51,9 @@ func WriteLineCSV(record []string, file string) error {
 	return nil
 }
 
-// UpdateLineCSV takes in a row and updates a CSV file by a column
+// UpdateLinesCSV takes in a row and updates multiple a CSV file by a column
 // In case of nil row, the line is deleted
-func UpdateLineCSV(newRecord []string, file, value string, col int) error {
+func UpdateLinesCSV(newRecord []string, file, value string, col int) error {
 	lines, err := ReadCSV(file)
 	if err != nil {
 		return errors.Wrap(err, "file open failed")
@@ -71,8 +71,9 @@ func UpdateLineCSV(newRecord []string, file, value string, col int) error {
 	return nil
 }
 
-// UpdateColCSV takes in a column and a value and updates just one column
-func UpdateColCSV(newValue string, newCol int, queryVal string, queryCol int, file string) error {
+// UpdateColsCSV takes in a column and a value
+// and updates the column across multiple rows
+func UpdateColsCSV(newValue string, newCol int, queryVal string, queryCol int, file string) error {
 	lines, err := ReadCSV(file)
 	if err != nil {
 		return errors.Wrap(err, "file open failed")
