@@ -58,7 +58,8 @@ func (glob *Global) handleCallback(call CallbackQuery) {
 	chatID := call.Message.Chat.ID
 	messageID := call.Message.MessageID
 
-	glob.Bot.ConfirmCallback(*callID, "Okay!")
+	toasts := []string{"Okay!", "Cool!", "Alright!", "Fine!", "Hmmm!"}
+	glob.Bot.ConfirmCallback(*callID, toasts[randInt(0, 4)])
 
 	context, actionable := glob.detectContext(*chatID, *text)
 	if actionable {
@@ -364,4 +365,9 @@ func genRoomNum() string {
 	}
 
 	return *(*string)(unsafe.Pointer(&b))
+}
+
+func randInt(min, max int) int {
+	rand.Seed(time.Now().Unix())
+	return min + rand.Intn(max-min+1)
 }
