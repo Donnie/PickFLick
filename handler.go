@@ -7,7 +7,6 @@ import (
 	"math/rand"
 	"os"
 	"strconv"
-	"strings"
 	"time"
 	"unsafe"
 
@@ -71,16 +70,16 @@ func (glob *Global) handleCallback(call CallbackQuery) {
 
 func (glob *Global) detectContext(chatID int64, text string) (context string, actionable bool) {
 	step := glob.getStep(chatID)
-	if strings.Contains(text, "/start") {
+	if text == "/start" {
 		context = "start"
 		return
 	}
-	if strings.Contains(text, "create-room") {
+	if text == "create-room" {
 		context = text
 		actionable = true
 		return
 	}
-	if strings.Contains(text, "enter-room") {
+	if text == "enter-room" {
 		context = text
 		actionable = true
 		return
@@ -88,6 +87,20 @@ func (glob *Global) detectContext(chatID int64, text string) (context string, ac
 	if len(text) == 3 && step == 1 {
 		context = "join-room"
 		actionable = true
+		return
+	}
+	if text == "done" {
+		context = text
+		actionable = true
+		return
+	}
+	if text == "exit" {
+		context = text
+		actionable = true
+		return
+	}
+	if text == "start-choice" {
+		context = text
 		return
 	}
 	return
@@ -135,6 +148,17 @@ func (glob *Global) genResponse(context, text string, chatID int64) (response st
 				bot.Button{Label: "Continue", Value: "done"},
 			}
 		}
+	case "done":
+		response = "Now I would show you 10 movies. And you would need to say if you want to watch it or not. Alright?"
+		options = &[]bot.Button{
+			bot.Button{Label: "Cool!", Value: "start-choice"},
+			bot.Button{Label: "Meh!", Value: "exit"},
+		}
+	case "exit":
+		response = "All clear! Have fun manually deciding movies 😂"
+		options = &[]bot.Button{
+			bot.Button{Label: "Start Again", Value: "/start"},
+		}
 	default:
 		response = "I didn't get you"
 	}
@@ -166,6 +190,8 @@ func (glob *Global) handleAction(chatID int64, messageID *int64, context, text s
 				text,
 			}, glob.File, strconv.FormatInt(chatID, 10), 0)
 		}
+	case "done":
+		glob.handleScrape()
 	}
 }
 
