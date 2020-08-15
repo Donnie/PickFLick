@@ -280,7 +280,7 @@ func (glob *Global) genResponse(context, text string, chatID int64) (response st
 				response = response + fmt.Sprintf("%d. [%s](%s)\n", i+1, movie.Title, movie.Link)
 			}
 		} else {
-			response = "Sorry! You do not have any common options."
+			response = "Sorry! You do not have any common options.\nRecommended number of choices is six."
 		}
 		response = response + "\n\nYou can try results again when your friends finish."
 
