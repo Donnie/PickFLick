@@ -87,33 +87,21 @@ func (glob *Global) detectContext(chatID int64, text string) (context string, ac
 		context = "start"
 		return
 	}
-	if text == "create-room" {
-		context = text
-		actionable = true
+	if text == "/about" {
+		context = "about"
 		return
 	}
-	if text == "enter-room" {
+	if text == "create-room" ||
+		text == "enter-room" ||
+		text == "exit" ||
+		text == "room-found" ||
+		text == "start-choice" {
 		context = text
 		actionable = true
 		return
 	}
 	if len(text) == 3 && step == "1" {
 		context = "join-room"
-		actionable = true
-		return
-	}
-	if text == "room-found" {
-		context = text
-		actionable = true
-		return
-	}
-	if text == "exit" {
-		context = text
-		actionable = true
-		return
-	}
-	if text == "start-choice" {
-		context = text
 		actionable = true
 		return
 	}
@@ -196,7 +184,7 @@ func (glob *Global) genResponse(context, text string, chatID int64) (response st
 	case "start":
 		// first clean all past records
 		glob.init(chatID)
-		response = "Create a room or enter an existing room?"
+		response = "A room is required to find a common choice between multiple friends.\n\nCreate a room or enter an existing room?"
 		options = &[]bot.Button{
 			bot.Button{Label: "Create", Value: "create-room"},
 			bot.Button{Label: "Enter", Value: "enter-room"},
@@ -217,7 +205,7 @@ func (glob *Global) genResponse(context, text string, chatID int64) (response st
 		}
 		edit = true
 	case "enter-room":
-		response = "Okay tell me the room number?"
+		response = "Okay tell me the room number? You need to ask your friends if you do not already have one."
 		edit = true
 	case "join-room":
 		if room == "" {
@@ -295,6 +283,11 @@ func (glob *Global) genResponse(context, text string, chatID int64) (response st
 			bot.Button{Label: "Create", Value: "create-room"},
 			bot.Button{Label: "Enter", Value: "enter-room"},
 		}
+	case "about":
+		response = "*PickFlick*:\n\n" +
+			"Open Source on [GitHub](https://github.com/Donnie/PickFlick)\n" +
+			"Hosted on Vultr.com in New Jersey, USA\n" +
+			"No personally identifiable information is stored or used by this bot."
 	default:
 		response = "I didn't get you"
 	}
