@@ -18,7 +18,7 @@ func WriteFileCSV(records [][]string, file string) error {
 		return errors.Wrap(err, "file deletion failed")
 	}
 
-	createPath(file)
+	CreatePath(file)
 	csvFile, err := os.OpenFile(file, os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return errors.Wrap(err, "file creation failed")
@@ -35,7 +35,7 @@ func WriteFileCSV(records [][]string, file string) error {
 
 // WriteLineCSV takes in a row and appends to a CSV file
 func WriteLineCSV(record []string, file string) error {
-	createPath(file)
+	CreatePath(file)
 	csvFile, err := os.OpenFile(file, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
 		return errors.Wrap(err, "file open failed")
@@ -93,7 +93,7 @@ func UpdateColsCSV(newValue string, newCol int, queryVal string, queryCol int, f
 
 // ReadCSV reads the entire file into a 2D array
 func ReadCSV(file string) ([][]string, error) {
-	createPath(file)
+	CreatePath(file)
 	csvFile, err := os.Open(file)
 	if err != nil {
 		return nil, errors.Wrap(err, "file open failed")
@@ -116,7 +116,8 @@ func ReadCSV(file string) ([][]string, error) {
 	return lines, nil
 }
 
-func createPath(file string) {
+// CreatePath initialises the directory structure of a file
+func CreatePath(file string) {
 	if _, err := os.Stat(file); os.IsNotExist(err) {
 		buff := strings.Split(file, "/")
 		filedir := strings.Join(buff[:len(buff)-1], "/")

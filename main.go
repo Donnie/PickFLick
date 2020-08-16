@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/Donnie/PickFlick/bot"
+	"github.com/Donnie/PickFlick/file"
 	"github.com/gin-gonic/gin"
 	tg "github.com/go-telegram-bot-api/telegram-bot-api"
 	"github.com/joho/godotenv"
@@ -18,18 +19,33 @@ func init() {
 	} else {
 		godotenv.Load(".env.local")
 	}
-	fmt.Println("Running for " + os.Getenv("ENV"))
+
+	logFile, exists := os.LookupEnv("LOG")
+	if !exists {
+		fmt.Println("Add LOG to .env file")
+		os.Exit(1)
+	}
+
+	file.CreatePath(logFile)
+	f, err := os.OpenFile(logFile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		log.Fatalf("Error opening log file: %v", err)
+	}
+	defer f.Close()
+	log.SetOutput(f)
+
+	log.Println("Running for " + os.Getenv("ENV"))
 }
 
 func main() {
 	teleToken, exists := os.LookupEnv("TELEGRAM_TOKEN")
 	if !exists {
-		fmt.Println("Add TELEGRAM_TOKEN to .env file")
+		log.Println("Add TELEGRAM_TOKEN to .env file")
 		os.Exit(1)
 	}
 	dbFile, exists := os.LookupEnv("DBFILE")
 	if !exists {
-		fmt.Println("Add DBFILE to .env file")
+		log.Println("Add DBFILE to .env file")
 		os.Exit(1)
 	}
 
