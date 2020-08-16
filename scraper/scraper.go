@@ -74,10 +74,11 @@ func getPage(link string, rank *int) (movies []Movie) {
 	lists := scrape.FindAll(root, scrape.ByClass("alice-teaser-media"))
 	for _, list := range lists {
 		*rank++
+		posterLink := strings.Replace(scrape.Attr(list.FirstChild.FirstChild, "data-src"), "160x226u", "320x452u", -1)
 		movie := Movie{
 			Description: scrape.Text(list.NextSibling.FirstChild.NextSibling),
 			Link:        "https:" + scrape.Attr(list.NextSibling.FirstChild.FirstChild, "href"),
-			Poster:      "https:" + scrape.Attr(list.FirstChild.FirstChild, "data-src"),
+			Poster:      "https:" + posterLink,
 			Rank:        *rank,
 			Title:       scrape.Text(list.NextSibling.FirstChild.FirstChild),
 		}
