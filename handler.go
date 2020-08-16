@@ -127,7 +127,7 @@ func (glob *Global) detectContext(chatID int64, text string) (context string, ac
 		actionable = true
 		return
 	}
-	if step == "2-10" {
+	if step == "2-10" || text == "choice-made" {
 		context = "choice-made"
 		actionable = true
 		return
@@ -234,7 +234,7 @@ func (glob *Global) genResponse(context, text string, chatID int64) (response st
 			}
 		}
 	case "room-found":
-		response = "Now I would show you top ten movies this week in Berlin."
+		response = "Now I would show you top 10 movies this week in Berlin. You have to like or dislike. You could also stop it anytime. Alright?"
 		options = &[]bot.Button{
 			bot.Button{Label: "Meh!", Value: "exit"},
 			bot.Button{Label: "Cool!", Value: "start-choice"},
@@ -258,6 +258,7 @@ func (glob *Global) genResponse(context, text string, chatID int64) (response st
 		options = &[]bot.Button{
 			bot.Button{Label: "👎", Value: fmt.Sprintf("discard-%d", movieNum)},
 			bot.Button{Label: "👍", Value: fmt.Sprintf("like-%d", movieNum)},
+			bot.Button{Label: "Stop", Value: "choice-made"},
 		}
 		edit = true
 		image = glob.Movies[movieNum-1].Poster
