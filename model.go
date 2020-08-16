@@ -19,6 +19,7 @@ type Context struct {
 	Actionable bool   // Whether an action from server side is necessary
 	ChatID     int64  // Stores User ID or Chat ID
 	Meaning    string // Meaning as assigned could be internal words
+	RoomID     string // RoomID to hold the room reference
 	Step       string // Step to store milestones in a conversation
 	Text       string // the original message from user
 }
@@ -29,6 +30,12 @@ type Response struct {
 	Text    string
 	IsEdit  bool
 	Image   string
+}
+
+// MovieChoice to show movies chosen by %age
+type MovieChoice struct {
+	Movie   scraper.Movie
+	Percent int
 }
 
 // Input struct

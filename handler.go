@@ -8,6 +8,7 @@ import (
 	"log"
 	"math/rand"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -38,6 +39,11 @@ func (glob *Global) handleHook(c *gin.Context) {
 		glob.handleCallback(*input.CallbackQuery)
 	}
 
+	glob.handleContext()
+	glob.handleAction()
+	glob.handleResponse()
+	glob.Bot.Send()
+
 	c.JSON(200, nil)
 }
 
@@ -48,11 +54,6 @@ func (glob *Global) handleMessage(msg Message) {
 	glob.Bot.Session.ReplyToID = &replyToID
 	glob.Context.ChatID = *msg.Chat.ID
 	glob.Context.Text = *msg.Text
-
-	glob.handleContext()
-	glob.handleAction()
-	glob.handleResponse()
-	glob.Bot.Send()
 }
 
 func (glob *Global) handleCallback(call CallbackQuery) {
@@ -66,15 +67,11 @@ func (glob *Global) handleCallback(call CallbackQuery) {
 
 	toasts := []string{"Okay!", "Cool!", "Alright!", "Fine!", "Hmmm!"}
 	glob.Bot.Session.Toast = &toasts[randInt(0, 4)]
-
-	glob.handleContext()
-	glob.handleAction()
-	glob.handleResponse()
-	glob.Bot.Send()
 }
 
 func (glob *Global) handleContext() {
-	glob.Context.Step = glob.getStep(glob.Context.ChatID)
+	glob.Context.Step = glob.getStep()
+
 	if glob.Context.Text == "/start" {
 		glob.Context.Meaning = "start"
 		return
@@ -167,7 +164,7 @@ func (glob *Global) handleAction() {
 			glob.Context.Step = "2-" + strconv.Itoa(lastStep+1)
 			file.UpdateColsCSV(glob.Context.Step, 1, strconv.FormatInt(glob.Context.ChatID, 10), 0, glob.File)
 
-			choice := glob.getChoice(glob.Context.ChatID)
+			choice := glob.getChoice()
 			switch glob.Context.Meaning {
 			case "discard":
 				choice[lastStep-1] = 0
@@ -185,8 +182,7 @@ func (glob *Global) handleAction() {
 }
 
 func (glob *Global) handleResponse() {
-	room := glob.getRoom(glob.Context.ChatID)
-
+	glob.Context.RoomID = glob.getRoom()
 	switch glob.Context.Meaning {
 	case "start":
 		// first clean all past records
@@ -198,14 +194,14 @@ func (glob *Global) handleResponse() {
 		}
 		glob.Response.IsEdit = true
 	case "create-room":
-		if room == "" {
+		if glob.Context.RoomID == "" {
 			glob.Response.Text = "We could not create a room for you. Try again?"
 			glob.Response.Options = &[]bot.Button{
 				bot.Button{Label: "Try again!", Value: "create-room"},
 				bot.Button{Label: "Enter", Value: "enter-room"},
 			}
 		} else {
-			glob.Response.Text = "Here is your room number: ```" + room + "```.\nNow share it with your friends."
+			glob.Response.Text = "Here is your room number: ```" + glob.Context.RoomID + "```.\nNow share it with your friends."
 			glob.Response.Options = &[]bot.Button{
 				bot.Button{Label: "Done", Value: "room-found"},
 			}
@@ -215,7 +211,7 @@ func (glob *Global) handleResponse() {
 		glob.Response.Text = "Okay tell me the room number? You need to ask your friends if you do not already have one."
 		glob.Response.IsEdit = true
 	case "join-room":
-		if room == "" {
+		if glob.Context.RoomID == "" {
 			glob.Response.Text = "We could not find a room by that number"
 			glob.Response.Options = &[]bot.Button{
 				bot.Button{Label: "Create", Value: "create-room"},
@@ -263,18 +259,16 @@ func (glob *Global) handleResponse() {
 			bot.Button{Label: "Choose Again", Value: "start-choice"},
 		}
 	case "show-result":
-		mergedChoice := mergeChoices(glob.getChoices(room))
-		movieList := glob.getMovieList(mergedChoice)
-
+		movieList := glob.movieChoices()
 		if len(movieList) > 0 {
-			glob.Response.Text = "So your room has chosen:\n\n"
-			for i, movie := range movieList {
-				glob.Response.Text = glob.Response.Text + fmt.Sprintf("%d. [%s](%s)\n", i+1, movie.Title, movie.Link)
+			glob.Response.Text = "So you have together chosen:\n\n"
+			for i, mc := range movieList {
+				glob.Response.Text = glob.Response.Text + fmt.Sprintf("%d. [%s](%s) **%d**%%\n", i+1, mc.Movie.Title, mc.Movie.Link, mc.Percent)
 			}
 		} else {
-			glob.Response.Text = "Sorry! You do not have any common options.\nRecommended number of choices is six."
+			glob.Response.Text = "Sorry! You do not have any common choices.\nRecommended number of choices is six."
 		}
-		glob.Response.Text = glob.Response.Text + "\n\nYou can try results again when your friends finish."
+		glob.Response.Text = glob.Response.Text + "\n\nYou can try results again if your friends still need to finish."
 
 		glob.Response.Options = &[]bot.Button{
 			bot.Button{Label: "Results?", Value: "show-result"},
@@ -322,14 +316,14 @@ func (glob *Global) isRoom(room string) bool {
 	return false
 }
 
-func (glob *Global) getRoom(chatID int64) (room string) {
+func (glob *Global) getRoom() (room string) {
 	mem, err := file.ReadCSV(glob.File)
 	if err != nil {
 		return ""
 	}
 	for _, line := range mem {
 		lineChatID, _ := strconv.ParseInt(line[0], 10, 64)
-		if chatID == lineChatID {
+		if glob.Context.ChatID == lineChatID {
 			room = line[2]
 			break
 		}
@@ -337,14 +331,14 @@ func (glob *Global) getRoom(chatID int64) (room string) {
 	return
 }
 
-func (glob *Global) getStep(chatID int64) (step string) {
+func (glob *Global) getStep() (step string) {
 	mem, err := file.ReadCSV(glob.File)
 	if err != nil {
 		return ""
 	}
 	for _, line := range mem {
 		lineChatID, _ := strconv.ParseInt(line[0], 10, 64)
-		if chatID == lineChatID {
+		if glob.Context.ChatID == lineChatID {
 			step = line[1]
 			break
 		}
@@ -352,14 +346,14 @@ func (glob *Global) getStep(chatID int64) (step string) {
 	return
 }
 
-func (glob *Global) getChoice(chatID int64) (choice []int) {
+func (glob *Global) getChoice() (choice []int) {
 	mem, err := file.ReadCSV(glob.File)
 	if err != nil {
 		return
 	}
 	for _, line := range mem {
 		lineChatID, _ := strconv.ParseInt(line[0], 10, 64)
-		if chatID == lineChatID {
+		if glob.Context.ChatID == lineChatID {
 			json.Unmarshal([]byte(line[3]), &choice)
 			break
 		}
@@ -367,14 +361,14 @@ func (glob *Global) getChoice(chatID int64) (choice []int) {
 	return
 }
 
-func (glob *Global) getChoices(roomID string) (choices [][]int) {
+func (glob *Global) getChoices() (choices [][]int) {
 	mem, err := file.ReadCSV(glob.File)
 	if err != nil {
 		return
 	}
 	for _, line := range mem {
 		choice := []int{}
-		if roomID == line[2] {
+		if glob.Context.RoomID == line[2] {
 			json.Unmarshal([]byte(line[3]), &choice)
 			choices = append(choices, choice)
 		}
@@ -382,35 +376,34 @@ func (glob *Global) getChoices(roomID string) (choices [][]int) {
 	return
 }
 
-func mergeChoices(choices [][]int) (merged []int) {
-	merged = []int{0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
+func (glob *Global) movieChoices() (mc []MovieChoice) {
+	choices := glob.getChoices()
+	movies := glob.Movies
 	for i := range choices[0] {
 		crossSec := getCrossSection(choices, i)
-		if !bothValues(crossSec, 0, 1) {
-			merged[i] = crossSec[0]
+		var aye int
+		for j := range crossSec {
+			if crossSec[j] == 1 {
+				aye++
+			}
+		}
+		percent := (float64(aye) / float64(len(crossSec))) * float64(100)
+		if percent > 50 {
+			mc = append(mc, MovieChoice{
+				Movie:   movies[i],
+				Percent: int(percent),
+			})
 		}
 	}
+	sort.Slice(mc, func(i, j int) bool {
+		return mc[i].Percent > mc[j].Percent
+	})
 	return
 }
 
 func getCrossSection(matrix [][]int, col int) (crossSec []int) {
 	for i := range matrix {
 		crossSec = append(crossSec, matrix[i][col])
-	}
-	return
-}
-
-func bothValues(array []int, value1, value2 int) (bo bool) {
-	bo = strings.Contains(fmt.Sprintf("%v", array), fmt.Sprintf("%d", value1)) &&
-		strings.Contains(fmt.Sprintf("%v", array), fmt.Sprintf("%d", value2))
-	return
-}
-
-func (glob *Global) getMovieList(choice []int) (movies []scraper.Movie) {
-	for i, ch := range choice {
-		if ch == 1 {
-			movies = append(movies, glob.Movies[i])
-		}
 	}
 	return
 }
