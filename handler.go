@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"math/rand"
 	"os"
 	"strconv"
@@ -21,18 +22,19 @@ import (
 func (glob *Global) handleHook(c *gin.Context) {
 	buf := new(bytes.Buffer)
 	buf.ReadFrom(c.Request.Body)
-	str := buf.String()
 
 	var input Input
 
-	err := json.Unmarshal([]byte(str), &input)
+	err := json.Unmarshal(buf.Bytes(), &input)
 	check(err)
+
+	glob.Context = new(Context)
+	glob.Response = new(Response)
+	glob.Bot.Session = new(bot.Session)
 
 	if input.Message != nil && input.Message.Text != nil {
 		glob.handleMessage(*input.Message)
-	}
-
-	if input.CallbackQuery != nil && input.CallbackQuery.Data != nil {
+	} else if input.CallbackQuery != nil && input.CallbackQuery.Data != nil {
 		glob.handleCallback(*input.CallbackQuery)
 	}
 
@@ -40,219 +42,223 @@ func (glob *Global) handleHook(c *gin.Context) {
 }
 
 func (glob *Global) handleMessage(msg Message) {
-	text := msg.Text
-	chatID := msg.Chat.ID
-	replyID := msg.MessageID
+	replyToID := int(*msg.MessageID)
 
-	context, actionable := glob.detectContext(*chatID, *text)
-	if actionable {
-		glob.handleAction(*chatID, replyID, context, *text)
-	}
-	output, buttons, _, image := glob.genResponse(context, *text, *chatID)
-	if image != "" {
-		glob.Bot.SendPhoto(*chatID, image, output, buttons)
-	}
+	glob.Bot.Session.ChatID = msg.Chat.ID
+	glob.Bot.Session.ReplyToID = &replyToID
+	glob.Context.ChatID = *msg.Chat.ID
+	glob.Context.Text = *msg.Text
 
-	glob.Bot.SendNew(*chatID, replyID, output, buttons)
+	glob.handleContext()
+	glob.handleAction()
+	glob.handleResponse()
+	glob.Bot.Send()
 }
 
 func (glob *Global) handleCallback(call CallbackQuery) {
-	text := call.Data
-	callID := call.ID
-	chatID := call.Message.Chat.ID
-	messageID := call.Message.MessageID
+	sentMsgID := int(*call.Message.MessageID)
 
-	context, actionable := glob.detectContext(*chatID, *text)
-	if actionable {
-		glob.handleAction(*chatID, messageID, context, *text)
-	}
-	output, buttons, edit, image := glob.genResponse(context, *text, *chatID)
-	if image != "" {
-		glob.Bot.SendPhoto(*chatID, image, output, buttons)
-	} else {
-		if edit {
-			glob.Bot.SendEdit(*chatID, *messageID, output, buttons)
-		} else {
-			glob.Bot.SendNew(*chatID, nil, output, buttons)
-		}
-	}
+	glob.Bot.Session.CallBackID = call.ID
+	glob.Bot.Session.ChatID = call.Message.Chat.ID
+	glob.Bot.Session.SentMsgID = &sentMsgID
+	glob.Context.ChatID = *call.Message.Chat.ID
+	glob.Context.Text = *call.Data
 
 	toasts := []string{"Okay!", "Cool!", "Alright!", "Fine!", "Hmmm!"}
-	glob.Bot.ConfirmCallback(*callID, toasts[randInt(0, 4)])
+	glob.Bot.Session.Toast = &toasts[randInt(0, 4)]
+
+	glob.handleContext()
+	glob.handleAction()
+	glob.handleResponse()
+	glob.Bot.Send()
 }
 
-func (glob *Global) detectContext(chatID int64, text string) (context string, actionable bool) {
-	step := glob.getStep(chatID)
-	if text == "/start" {
-		context = "start"
+func (glob *Global) handleContext() {
+	glob.Context.Step = glob.getStep(glob.Context.ChatID)
+	if glob.Context.Text == "/start" {
+		glob.Context.Meaning = "start"
 		return
 	}
-	if text == "/about" {
-		context = "about"
+	if glob.Context.Text == "/about" {
+		glob.Context.Meaning = "about"
 		return
 	}
-	if text == "create-room" ||
-		text == "enter-room" ||
-		text == "exit" ||
-		text == "room-found" ||
-		text == "start-choice" {
-		context = text
-		actionable = true
+	if glob.Context.Text == "create-room" ||
+		glob.Context.Text == "enter-room" ||
+		glob.Context.Text == "exit" ||
+		glob.Context.Text == "room-found" ||
+		glob.Context.Text == "start-choice" {
+		glob.Context.Meaning = glob.Context.Text
+		glob.Context.Actionable = true
 		return
 	}
-	if len(text) == 3 && step == "1" {
-		context = "join-room"
-		actionable = true
+	if len(glob.Context.Text) == 3 && glob.Context.Step == "1" {
+		glob.Context.Meaning = "join-room"
+		glob.Context.Actionable = true
 		return
 	}
-	if strings.Contains(text, "discard") && step != "2-10" {
-		context = "discard"
-		actionable = true
+	if strings.Contains(glob.Context.Text, "discard") &&
+		glob.Context.Step != "2-10" {
+		glob.Context.Meaning = "discard"
+		glob.Context.Actionable = true
 		return
 	}
-	if strings.Contains(text, "like") && step != "2-10" {
-		context = "like"
-		actionable = true
+	if strings.Contains(glob.Context.Text, "like") &&
+		glob.Context.Step != "2-10" {
+		glob.Context.Meaning = "like"
+		glob.Context.Actionable = true
 		return
 	}
-	if step == "2-10" || text == "choice-made" {
-		context = "choice-made"
-		actionable = true
+	if glob.Context.Step == "2-10" || glob.Context.Text == "choice-made" {
+		glob.Context.Meaning = "choice-made"
+		glob.Context.Actionable = true
 		return
 	}
-	if text == "show-result" && step == "3" {
-		context = "show-result"
+	if glob.Context.Text == "show-result" && glob.Context.Step == "3" {
+		glob.Context.Meaning = "show-result"
 		return
 	}
-	if text == "end" && step == "3" {
-		context = "end"
-		actionable = true
+	if glob.Context.Text == "end" && glob.Context.Step == "3" {
+		glob.Context.Meaning = "end"
+		glob.Context.Actionable = true
 		return
 	}
-	return
 }
 
-func (glob *Global) handleAction(chatID int64, messageID *int64, context, text string) {
-	switch context {
-	case "create-room":
-		glob.init(chatID)
-		file.WriteLineCSV([]string{
-			strconv.FormatInt(chatID, 10),
-			"1",
-			genRoomNum(),
-			"[0,0,0,0,0,0,0,0,0,0]",
-		}, glob.File)
-	case "enter-room":
-		glob.init(chatID)
-		// register step 1
-		file.WriteLineCSV([]string{
-			strconv.FormatInt(chatID, 10),
-			"1",
-			"",
-			"[0,0,0,0,0,0,0,0,0,0]",
-		}, glob.File)
-	case "join-room":
-		if glob.isRoom(text) {
-			file.UpdateColsCSV(text, 2, strconv.FormatInt(chatID, 10), 0, glob.File)
+func (glob *Global) handleAction() {
+	if glob.Context.Actionable {
+		switch glob.Context.Meaning {
+
+		case "create-room":
+			glob.init(glob.Context.ChatID)
+			glob.Context.Step = "1"
+			file.WriteLineCSV([]string{
+				strconv.FormatInt(glob.Context.ChatID, 10),
+				glob.Context.Step,
+				genRoomNum(),
+				"[0,0,0,0,0,0,0,0,0,0]",
+			}, glob.File)
+
+		case "enter-room":
+			glob.init(glob.Context.ChatID)
+			// register step 1
+			glob.Context.Step = "1"
+			file.WriteLineCSV([]string{
+				strconv.FormatInt(glob.Context.ChatID, 10),
+				glob.Context.Step,
+				"",
+				"[0,0,0,0,0,0,0,0,0,0]",
+			}, glob.File)
+
+		case "join-room":
+			if glob.isRoom(glob.Context.Text) {
+				file.UpdateColsCSV(glob.Context.Text, 2, strconv.FormatInt(glob.Context.ChatID, 10), 0, glob.File)
+			}
+
+		case "room-found":
+			glob.handleScrape()
+
+		case "start-choice":
+			glob.Context.Step = "2-1"
+			file.UpdateColsCSV(glob.Context.Step, 1, strconv.FormatInt(glob.Context.ChatID, 10), 0, glob.File)
+
+		case "discard", "like":
+			lastStep, _ := strconv.Atoi(strings.Split(glob.Context.Text, "-")[1])
+			glob.Context.Step = "2-" + strconv.Itoa(lastStep+1)
+			file.UpdateColsCSV(glob.Context.Step, 1, strconv.FormatInt(glob.Context.ChatID, 10), 0, glob.File)
+
+			choice := glob.getChoice(glob.Context.ChatID)
+			switch glob.Context.Meaning {
+			case "discard":
+				choice[lastStep-1] = 0
+			case "like":
+				choice[lastStep-1] = 1
+			}
+			choiceStr, _ := json.Marshal(choice)
+			file.UpdateColsCSV(string(choiceStr), 3, strconv.FormatInt(glob.Context.ChatID, 10), 0, glob.File)
+
+		case "choice-made":
+			glob.Context.Step = "3"
+			file.UpdateColsCSV(glob.Context.Step, 1, strconv.FormatInt(glob.Context.ChatID, 10), 0, glob.File)
 		}
-	case "room-found":
-		glob.handleScrape()
-	case "start-choice":
-		file.UpdateColsCSV("2-1", 1, strconv.FormatInt(chatID, 10), 0, glob.File)
-	case "discard", "like":
-		movieStep, _ := strconv.Atoi(strings.Split(text, "-")[1])
-		file.UpdateColsCSV("2-"+strconv.Itoa(movieStep+1), 1, strconv.FormatInt(chatID, 10), 0, glob.File)
-
-		choice := glob.getChoice(chatID)
-		switch context {
-		case "discard":
-			choice[movieStep-1] = 0
-		case "like":
-			choice[movieStep-1] = 1
-		}
-		choiceStr, _ := json.Marshal(choice)
-		file.UpdateColsCSV(string(choiceStr), 3, strconv.FormatInt(chatID, 10), 0, glob.File)
-	case "choice-made":
-		file.UpdateColsCSV("3", 1, strconv.FormatInt(chatID, 10), 0, glob.File)
 	}
 }
 
-func (glob *Global) genResponse(context, text string, chatID int64) (response string, options *[]bot.Button, edit bool, image string) {
-	room := glob.getRoom(chatID)
+func (glob *Global) handleResponse() {
+	room := glob.getRoom(glob.Context.ChatID)
 
-	switch context {
+	switch glob.Context.Meaning {
 	case "start":
 		// first clean all past records
-		glob.init(chatID)
-		response = "A room is required to find a common choice between multiple friends.\n\nCreate a room or enter an existing room?"
-		options = &[]bot.Button{
+		glob.init(glob.Context.ChatID)
+		glob.Response.Text = "A room is required to find a common choice between multiple friends.\n\nCreate a room or enter an existing room?"
+		glob.Response.Options = &[]bot.Button{
 			bot.Button{Label: "Create", Value: "create-room"},
 			bot.Button{Label: "Enter", Value: "enter-room"},
 		}
-		edit = true
+		glob.Response.IsEdit = true
 	case "create-room":
 		if room == "" {
-			response = "We could not create a room for you. Try again?"
-			options = &[]bot.Button{
+			glob.Response.Text = "We could not create a room for you. Try again?"
+			glob.Response.Options = &[]bot.Button{
 				bot.Button{Label: "Try again!", Value: "create-room"},
 				bot.Button{Label: "Enter", Value: "enter-room"},
 			}
 		} else {
-			response = "Here is your room number: ```" + room + "```.\nNow share it with your friends."
-			options = &[]bot.Button{
+			glob.Response.Text = "Here is your room number: ```" + room + "```.\nNow share it with your friends."
+			glob.Response.Options = &[]bot.Button{
 				bot.Button{Label: "Done", Value: "room-found"},
 			}
 		}
-		edit = true
+		glob.Response.IsEdit = true
 	case "enter-room":
-		response = "Okay tell me the room number? You need to ask your friends if you do not already have one."
-		edit = true
+		glob.Response.Text = "Okay tell me the room number? You need to ask your friends if you do not already have one."
+		glob.Response.IsEdit = true
 	case "join-room":
 		if room == "" {
-			response = "We could not find a room by that number"
-			options = &[]bot.Button{
+			glob.Response.Text = "We could not find a room by that number"
+			glob.Response.Options = &[]bot.Button{
 				bot.Button{Label: "Create", Value: "create-room"},
 				bot.Button{Label: "Enter", Value: "enter-room"},
 			}
-			edit = true
+			glob.Response.IsEdit = true
 		} else {
-			response = "Room found!"
-			options = &[]bot.Button{
+			glob.Response.Text = "Room found!"
+			glob.Response.Options = &[]bot.Button{
 				bot.Button{Label: "Continue", Value: "room-found"},
 			}
 		}
 	case "room-found":
-		response = "Now I would show you top 10 movies this week in Berlin. You have to like or dislike. You could also stop it anytime. Alright?"
-		options = &[]bot.Button{
+		glob.Response.Text = "Now I would show you top 10 movies this week in Berlin. You have to like or dislike. You could also stop it anytime. Alright?"
+		glob.Response.Options = &[]bot.Button{
 			bot.Button{Label: "Meh!", Value: "exit"},
 			bot.Button{Label: "Cool!", Value: "start-choice"},
 		}
-		edit = true
+		glob.Response.IsEdit = true
 	case "exit":
-		response = "All clear! Have fun manually deciding movies 😂"
-		options = &[]bot.Button{
+		glob.Response.Text = "All clear! Have fun manually deciding movies 😂"
+		glob.Response.Options = &[]bot.Button{
 			bot.Button{Label: "Start Again", Value: "/start"},
 		}
 	case "start-choice", "discard", "like":
-		step := glob.getStep(chatID)
-		movieNum, _ := strconv.Atoi(strings.Split(step, "-")[1])
-		response = fmt.Sprintf(
+		movieNum, _ := strconv.Atoi(strings.Split(glob.Context.Step, "-")[1])
+		glob.Response.Text = fmt.Sprintf(
 			"%d. [%s](%s)\n\n%s\n",
 			movieNum,
 			glob.Movies[movieNum-1].Title,
 			glob.Movies[movieNum-1].Link,
 			glob.Movies[movieNum-1].Description,
 		)
-		options = &[]bot.Button{
+		glob.Response.Options = &[]bot.Button{
 			bot.Button{Label: "👎", Value: fmt.Sprintf("discard-%d", movieNum)},
 			bot.Button{Label: "👍", Value: fmt.Sprintf("like-%d", movieNum)},
 			bot.Button{Label: "Stop", Value: "choice-made"},
 		}
-		edit = true
-		image = glob.Movies[movieNum-1].Poster
+		glob.Response.IsEdit = true
+		glob.Response.Image = glob.Movies[movieNum-1].Poster
 	case "choice-made":
-		response = "Great you are done choosing!"
-		options = &[]bot.Button{
+		glob.Response.Text = "Great you are done choosing!"
+		glob.Response.Options = &[]bot.Button{
 			bot.Button{Label: "Results?", Value: "show-result"},
 			bot.Button{Label: "Choose Again", Value: "start-choice"},
 		}
@@ -261,37 +267,41 @@ func (glob *Global) genResponse(context, text string, chatID int64) (response st
 		movieList := glob.getMovieList(mergedChoice)
 
 		if len(movieList) > 0 {
-			response = "So your room has chosen:\n\n"
+			glob.Response.Text = "So your room has chosen:\n\n"
 			for i, movie := range movieList {
-				response = response + fmt.Sprintf("%d. [%s](%s)\n", i+1, movie.Title, movie.Link)
+				glob.Response.Text = glob.Response.Text + fmt.Sprintf("%d. [%s](%s)\n", i+1, movie.Title, movie.Link)
 			}
 		} else {
-			response = "Sorry! You do not have any common options.\nRecommended number of choices is six."
+			glob.Response.Text = "Sorry! You do not have any common options.\nRecommended number of choices is six."
 		}
-		response = response + "\n\nYou can try results again when your friends finish."
+		glob.Response.Text = glob.Response.Text + "\n\nYou can try results again when your friends finish."
 
-		options = &[]bot.Button{
+		glob.Response.Options = &[]bot.Button{
 			bot.Button{Label: "Results?", Value: "show-result"},
 			bot.Button{Label: "Choose Again", Value: "start-choice"},
 			bot.Button{Label: "Exit", Value: "end"},
 		}
-		edit = true
+		glob.Response.IsEdit = true
 	case "end":
-		glob.init(chatID)
-		response = "Create a room or enter an existing room?"
-		options = &[]bot.Button{
+		glob.init(glob.Context.ChatID)
+		glob.Response.Text = "Create a room or enter an existing room?"
+		glob.Response.Options = &[]bot.Button{
 			bot.Button{Label: "Create", Value: "create-room"},
 			bot.Button{Label: "Enter", Value: "enter-room"},
 		}
 	case "about":
-		response = "*PickFlick*:\n\n" +
+		glob.Response.Text = "*PickFlick*:\n\n" +
 			"Open Source on [GitHub](https://github.com/Donnie/PickFlick)\n" +
 			"Hosted on Vultr.com in New Jersey, USA\n" +
 			"No personally identifiable information is stored or used by this bot."
 	default:
-		response = "I didn't get you"
+		glob.Response.Text = "I didn't get you"
 	}
-	return
+
+	glob.Bot.Session.Buttons = glob.Response.Options
+	glob.Bot.Session.ImageLink = &glob.Response.Image
+	glob.Bot.Session.IsEdit = &glob.Response.IsEdit
+	glob.Bot.Session.Text = &glob.Response.Text
 }
 
 func (glob *Global) init(chatID int64) {
@@ -426,7 +436,7 @@ func (glob *Global) handleScrape() {
 
 func check(e error) {
 	if e != nil {
-		panic(e)
+		log.Panic(e)
 	}
 }
 

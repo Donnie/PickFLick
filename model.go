@@ -7,9 +7,28 @@ import (
 
 // Global holds fundamental items
 type Global struct {
-	Bot    bot.Cl
-	File   string
-	Movies []scraper.Movie
+	Bot      bot.Cl
+	Context  *Context
+	File     string
+	Movies   []scraper.Movie
+	Response *Response
+}
+
+// Context stores meaning from human interaction
+type Context struct {
+	Actionable bool   // Whether an action from server side is necessary
+	ChatID     int64  // Stores User ID or Chat ID
+	Meaning    string // Meaning as assigned could be internal words
+	Step       string // Step to store milestones in a conversation
+	Text       string // the original message from user
+}
+
+// Response stores the output from this bot
+type Response struct {
+	Options *[]bot.Button
+	Text    string
+	IsEdit  bool
+	Image   string
 }
 
 // Input struct
