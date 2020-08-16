@@ -413,7 +413,7 @@ func (glob *Global) getMovieList(choice []int) (movies []scraper.Movie) {
 }
 
 func (glob *Global) handleScrape() {
-	layout := "2006-01-02.json"
+	layout := "db/2006-01-02.json"
 	filename := time.Now().Format(layout)
 
 	file, err := os.Open(filename)
