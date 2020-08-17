@@ -80,6 +80,10 @@ func (glob *Global) handleContext() {
 		glob.Context.Meaning = "about"
 		return
 	}
+	if glob.Context.Text == "/help" {
+		glob.Context.Meaning = "help"
+		return
+	}
 	if glob.Context.Text == "create-room" ||
 		glob.Context.Text == "enter-room" ||
 		glob.Context.Text == "exit" ||
@@ -283,6 +287,13 @@ func (glob *Global) handleResponse() {
 			bot.Button{Label: "Create", Value: "create-room"},
 			bot.Button{Label: "Enter", Value: "enter-room"},
 		}
+	case "help":
+		glob.Response.Text = "*Help*:\n\n" +
+			"This bot shows you top ten movies playing in Berlin currently.\n" +
+			"Try to choose at least six movies so that the probability of a match is higher with your friends.\n" +
+			"Once complete it would show you the results. But you would be able to try again.\n" +
+			"The results are saved as long as you do not exit the bot.\n\n" +
+			"/start Use this command to restart the bot anytime during usage."
 	case "about":
 		glob.Response.Text = "*PickFlick*:\n\n" +
 			"Open Source on [GitHub](https://github.com/Donnie/PickFlick)\n" +
