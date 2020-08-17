@@ -70,7 +70,8 @@ func (glob *Global) handleCallback(call CallbackQuery) {
 }
 
 func (glob *Global) handleContext() {
-	glob.Context.Step = glob.getStep()
+	glob.getStep()
+	glob.getRoom()
 
 	if glob.Context.Text == "/start" {
 		glob.Context.Meaning = "start"
@@ -98,19 +99,17 @@ func (glob *Global) handleContext() {
 		glob.Context.Actionable = true
 		return
 	}
-	if strings.Contains(glob.Context.Text, "discard") &&
-		glob.Context.Step != "2-10" {
+	if strings.Contains(glob.Context.Text, "discard") {
 		glob.Context.Meaning = "discard"
 		glob.Context.Actionable = true
 		return
 	}
-	if strings.Contains(glob.Context.Text, "like") &&
-		glob.Context.Step != "2-10" {
+	if strings.Contains(glob.Context.Text, "like") {
 		glob.Context.Meaning = "like"
 		glob.Context.Actionable = true
 		return
 	}
-	if glob.Context.Step == "2-10" || glob.Context.Text == "choice-made" {
+	if glob.Context.Text == "choice-made" {
 		glob.Context.Meaning = "choice-made"
 		glob.Context.Actionable = true
 		return
@@ -131,29 +130,31 @@ func (glob *Global) handleAction() {
 		switch glob.Context.Meaning {
 
 		case "create-room":
-			glob.init(glob.Context.ChatID)
+			glob.init()
 			glob.Context.Step = "1"
+			glob.Context.RoomID = genRoomNum()
 			file.WriteLineCSV([]string{
 				strconv.FormatInt(glob.Context.ChatID, 10),
 				glob.Context.Step,
-				genRoomNum(),
-				"[0,0,0,0,0,0,0,0,0,0]",
+				glob.Context.RoomID,
+				"[]",
 			}, glob.File)
 
 		case "enter-room":
-			glob.init(glob.Context.ChatID)
+			glob.init()
 			// register step 1
 			glob.Context.Step = "1"
 			file.WriteLineCSV([]string{
 				strconv.FormatInt(glob.Context.ChatID, 10),
 				glob.Context.Step,
-				"",
-				"[0,0,0,0,0,0,0,0,0,0]",
+				glob.Context.RoomID,
+				"[]",
 			}, glob.File)
 
 		case "join-room":
 			if glob.isRoom(glob.Context.Text) {
-				file.UpdateColsCSV(glob.Context.Text, 2, strconv.FormatInt(glob.Context.ChatID, 10), 0, glob.File)
+				glob.Context.RoomID = glob.Context.Text
+				glob.setRoom()
 			}
 
 		case "room-found":
@@ -161,36 +162,40 @@ func (glob *Global) handleAction() {
 
 		case "start-choice":
 			glob.Context.Step = "2-1"
-			file.UpdateColsCSV(glob.Context.Step, 1, strconv.FormatInt(glob.Context.ChatID, 10), 0, glob.File)
+			glob.setStep()
+			glob.Context.Choice = []int{}
+			glob.setChoice()
 
 		case "discard", "like":
 			lastStep, _ := strconv.Atoi(strings.Split(glob.Context.Text, "-")[1])
 			glob.Context.Step = "2-" + strconv.Itoa(lastStep+1)
-			file.UpdateColsCSV(glob.Context.Step, 1, strconv.FormatInt(glob.Context.ChatID, 10), 0, glob.File)
+			glob.setStep()
 
-			choice := glob.getChoice()
+			glob.getChoice()
 			switch glob.Context.Meaning {
-			case "discard":
-				choice[lastStep-1] = 0
 			case "like":
-				choice[lastStep-1] = 1
+				glob.Context.Choice = append(glob.Context.Choice, lastStep)
 			}
-			choiceStr, _ := json.Marshal(choice)
-			file.UpdateColsCSV(string(choiceStr), 3, strconv.FormatInt(glob.Context.ChatID, 10), 0, glob.File)
+			glob.setChoice()
+
+			if glob.Context.Step == "2-11" {
+				glob.Context.Step = "3"
+				glob.Context.Meaning = "choice-made"
+				glob.setStep()
+			}
 
 		case "choice-made":
 			glob.Context.Step = "3"
-			file.UpdateColsCSV(glob.Context.Step, 1, strconv.FormatInt(glob.Context.ChatID, 10), 0, glob.File)
+			glob.setStep()
 		}
 	}
 }
 
 func (glob *Global) handleResponse() {
-	glob.Context.RoomID = glob.getRoom()
 	switch glob.Context.Meaning {
 	case "start":
 		// first clean all past records
-		glob.init(glob.Context.ChatID)
+		glob.init()
 		glob.Response.Text = "A room is required to find a common choice between multiple friends.\n\nCreate a room or enter an existing room?"
 		glob.Response.Options = &[]bot.Button{
 			bot.Button{Label: "Create", Value: "create-room"},
@@ -281,7 +286,7 @@ func (glob *Global) handleResponse() {
 		}
 		glob.Response.IsEdit = true
 	case "end":
-		glob.init(glob.Context.ChatID)
+		glob.init()
 		glob.Response.Text = "Create a room or enter an existing room?"
 		glob.Response.Options = &[]bot.Button{
 			bot.Button{Label: "Create", Value: "create-room"},
@@ -309,9 +314,9 @@ func (glob *Global) handleResponse() {
 	glob.Bot.Session.Text = &glob.Response.Text
 }
 
-func (glob *Global) init(chatID int64) {
+func (glob *Global) init() {
 	// clear previous chats
-	file.UpdateLinesCSV(nil, glob.File, strconv.FormatInt(chatID, 10), 0)
+	file.UpdateLinesCSV(nil, glob.File, strconv.FormatInt(glob.Context.ChatID, 10), 0)
 }
 
 func (glob *Global) isRoom(room string) bool {
@@ -327,37 +332,7 @@ func (glob *Global) isRoom(room string) bool {
 	return false
 }
 
-func (glob *Global) getRoom() (room string) {
-	mem, err := file.ReadCSV(glob.File)
-	if err != nil {
-		return ""
-	}
-	for _, line := range mem {
-		lineChatID, _ := strconv.ParseInt(line[0], 10, 64)
-		if glob.Context.ChatID == lineChatID {
-			room = line[2]
-			break
-		}
-	}
-	return
-}
-
-func (glob *Global) getStep() (step string) {
-	mem, err := file.ReadCSV(glob.File)
-	if err != nil {
-		return ""
-	}
-	for _, line := range mem {
-		lineChatID, _ := strconv.ParseInt(line[0], 10, 64)
-		if glob.Context.ChatID == lineChatID {
-			step = line[1]
-			break
-		}
-	}
-	return
-}
-
-func (glob *Global) getChoice() (choice []int) {
+func (glob *Global) getRoom() {
 	mem, err := file.ReadCSV(glob.File)
 	if err != nil {
 		return
@@ -365,11 +340,51 @@ func (glob *Global) getChoice() (choice []int) {
 	for _, line := range mem {
 		lineChatID, _ := strconv.ParseInt(line[0], 10, 64)
 		if glob.Context.ChatID == lineChatID {
-			json.Unmarshal([]byte(line[3]), &choice)
+			glob.Context.RoomID = line[2]
 			break
 		}
 	}
-	return
+}
+
+func (glob *Global) setRoom() {
+	file.UpdateColsCSV(glob.Context.RoomID, 2, strconv.FormatInt(glob.Context.ChatID, 10), 0, glob.File)
+}
+
+func (glob *Global) getStep() {
+	mem, err := file.ReadCSV(glob.File)
+	if err != nil {
+		return
+	}
+	for _, line := range mem {
+		lineChatID, _ := strconv.ParseInt(line[0], 10, 64)
+		if glob.Context.ChatID == lineChatID {
+			glob.Context.Step = line[1]
+			break
+		}
+	}
+}
+
+func (glob *Global) setStep() {
+	file.UpdateColsCSV(glob.Context.Step, 1, strconv.FormatInt(glob.Context.ChatID, 10), 0, glob.File)
+}
+
+func (glob *Global) getChoice() {
+	mem, err := file.ReadCSV(glob.File)
+	if err != nil {
+		return
+	}
+	for _, line := range mem {
+		lineChatID, _ := strconv.ParseInt(line[0], 10, 64)
+		if glob.Context.ChatID == lineChatID {
+			json.Unmarshal([]byte(line[3]), &glob.Context.Choice)
+			break
+		}
+	}
+}
+
+func (glob *Global) setChoice() {
+	choiceStr, _ := json.Marshal(glob.Context.Choice)
+	file.UpdateColsCSV(string(choiceStr), 3, strconv.FormatInt(glob.Context.ChatID, 10), 0, glob.File)
 }
 
 func (glob *Global) getChoices() (choices [][]int) {
@@ -389,33 +404,28 @@ func (glob *Global) getChoices() (choices [][]int) {
 
 func (glob *Global) movieChoices() (mc []MovieChoice) {
 	choices := glob.getChoices()
-	movies := glob.Movies
-	for i := range choices[0] {
-		crossSec := getCrossSection(choices, i)
-		var aye int
-		for j := range crossSec {
-			if crossSec[j] == 1 {
-				aye++
-			}
+
+	choiceMap := make([]int, len(glob.Movies))
+
+	for _, choice := range choices {
+		for _, unit := range choice {
+			choiceMap[unit]++
 		}
-		percent := (float64(aye) / float64(len(crossSec))) * float64(100)
+	}
+
+	for i, unit := range choiceMap {
+		percent := int(float64(unit) / float64(len(choices)) * float64(100))
 		if percent > 50 {
 			mc = append(mc, MovieChoice{
-				Movie:   movies[i],
-				Percent: int(percent),
+				Movie:   glob.Movies[i-1],
+				Percent: percent,
 			})
 		}
 	}
+
 	sort.Slice(mc, func(i, j int) bool {
 		return mc[i].Percent > mc[j].Percent
 	})
-	return
-}
-
-func getCrossSection(matrix [][]int, col int) (crossSec []int) {
-	for i := range matrix {
-		crossSec = append(crossSec, matrix[i][col])
-	}
 	return
 }
 
