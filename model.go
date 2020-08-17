@@ -29,7 +29,7 @@ type Response struct {
 	Options *[]bot.Button
 	Text    string
 	IsEdit  bool
-	Image   string
+	Image   *string
 }
 
 // MovieChoice to show movies chosen by %age

@@ -255,7 +255,7 @@ func (glob *Global) handleResponse() {
 			bot.Button{Label: "Stop", Value: "choice-made"},
 		}
 		glob.Response.IsEdit = true
-		glob.Response.Image = glob.Movies[movieNum-1].Poster
+		glob.Response.Image = &glob.Movies[movieNum-1].Poster
 	case "choice-made":
 		glob.Response.Text = "Great you are done choosing!"
 		glob.Response.Options = &[]bot.Button{
@@ -304,7 +304,7 @@ func (glob *Global) handleResponse() {
 	}
 
 	glob.Bot.Session.Buttons = glob.Response.Options
-	glob.Bot.Session.ImageLink = &glob.Response.Image
+	glob.Bot.Session.ImageLink = glob.Response.Image
 	glob.Bot.Session.IsEdit = &glob.Response.IsEdit
 	glob.Bot.Session.Text = &glob.Response.Text
 }

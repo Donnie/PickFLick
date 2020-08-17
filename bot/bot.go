@@ -52,7 +52,7 @@ func (cl *Cl) Send() (*tg.Message, error) {
 			cl.ConfirmCallback(*cl.Session.CallBackID, *cl.Session.Toast)
 		}
 
-		if cl.Session.ImageLink != nil && *cl.Session.ImageLink != "" {
+		if cl.Session.ImageLink != nil {
 			m, err := cl.SendPhoto(*cl.Session.ImageLink, *cl.Session.ChatID, *cl.Session.Text, cl.Session.Buttons)
 			if err != nil {
 				return nil, err
