@@ -72,6 +72,7 @@ func (glob *Global) handleCallback(call CallbackQuery) {
 func (glob *Global) handleContext() {
 	glob.getStep()
 	glob.getRoom()
+	glob.handleScrape()
 
 	if glob.Context.Text == "/start" {
 		glob.Context.Meaning = "start"
@@ -446,6 +447,12 @@ func (glob *Global) handleScrape() {
 	json.Unmarshal(jsonBytes, &movies)
 
 	glob.Movies = movies
+}
+
+func (glob *Global) poll() {
+	for range time.Tick(time.Hour) {
+		glob.handleScrape()
+	}
 }
 
 func check(e error) {

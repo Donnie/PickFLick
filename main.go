@@ -61,7 +61,8 @@ func main() {
 		},
 		File: dbFile,
 	}
-	glob.handleScrape()
+
+	go glob.poll()
 
 	r := gin.Default()
 	r.GET("/scrape", func(c *gin.Context) {
