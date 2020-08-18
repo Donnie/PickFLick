@@ -24,7 +24,7 @@ type Movie struct {
 // Save scrapes the website and saves data locally as json to a file
 func Save(file string) {
 	fmt.Println("Scraping started at", time.Now())
-	var startPage = "https://www.kino.de/filme/aktuell/?sp_country=deutschland"
+	var startPage = "https://www.kino.de/filme/aktuell/"
 	// request and parse Kino.DE
 	resp, err := http.Get(startPage)
 	if err != nil {
@@ -44,7 +44,7 @@ func Save(file string) {
 		if page == "1" {
 			pages[i] = startPage
 		} else {
-			pages[i] = "https://www.kino.de/filme/aktuell/page/" + page + "/?sp_country=deutschland"
+			pages[i] = "https://www.kino.de/filme/aktuell/page/" + page + "/"
 		}
 	}
 
