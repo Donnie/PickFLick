@@ -73,6 +73,7 @@ func (glob *Global) handleContext() {
 	glob.getStep()
 	glob.getRoom()
 	glob.handleScrape()
+	glob.getLimit()
 
 	if glob.Context.Text == "/start" {
 		glob.Context.Meaning = "start"
@@ -87,32 +88,30 @@ func (glob *Global) handleContext() {
 		return
 	}
 	if glob.Context.Text == "create-room" ||
+		glob.Context.Text == "choice-more" ||
 		glob.Context.Text == "enter-room" ||
 		glob.Context.Text == "exit" ||
+		glob.Context.Text == "new-list" ||
+		glob.Context.Text == "prev-list" ||
 		glob.Context.Text == "room-found" ||
 		glob.Context.Text == "start-choice" {
 		glob.Context.Meaning = glob.Context.Text
-		glob.Context.Actionable = true
 		return
 	}
 	if len(glob.Context.Text) == 3 && glob.Context.Step == "1" {
 		glob.Context.Meaning = "join-room"
-		glob.Context.Actionable = true
 		return
 	}
 	if strings.Contains(glob.Context.Text, "discard") {
 		glob.Context.Meaning = "discard"
-		glob.Context.Actionable = true
 		return
 	}
 	if strings.Contains(glob.Context.Text, "like") {
 		glob.Context.Meaning = "like"
-		glob.Context.Actionable = true
 		return
 	}
 	if glob.Context.Text == "choice-made" {
 		glob.Context.Meaning = "choice-made"
-		glob.Context.Actionable = true
 		return
 	}
 	if glob.Context.Text == "show-result" && glob.Context.Step == "3" {
@@ -121,74 +120,84 @@ func (glob *Global) handleContext() {
 	}
 	if glob.Context.Text == "end" && glob.Context.Step == "3" {
 		glob.Context.Meaning = "end"
-		glob.Context.Actionable = true
 		return
 	}
 }
 
 func (glob *Global) handleAction() {
-	if glob.Context.Actionable {
+	switch glob.Context.Meaning {
+	case "create-room":
+		glob.init()
+		glob.Context.Step = "1"
+		glob.Context.RoomID = genRoomNum()
+		file.WriteLineCSV([]string{
+			strconv.FormatInt(glob.Context.ChatID, 10),
+			glob.Context.Step,
+			glob.Context.RoomID,
+			"[]",
+			"11",
+		}, glob.File)
+
+	case "enter-room":
+		glob.init()
+		// register step 1
+		glob.Context.Step = "1"
+		file.WriteLineCSV([]string{
+			strconv.FormatInt(glob.Context.ChatID, 10),
+			glob.Context.Step,
+			glob.Context.RoomID,
+			"[]",
+			"11",
+		}, glob.File)
+
+	case "join-room":
+		if glob.isRoom(glob.Context.Text) {
+			glob.Context.RoomID = glob.Context.Text
+			glob.setRoom()
+		}
+
+	case "room-found":
+		glob.handleScrape()
+
+	case "start-choice":
+		glob.Context.Step = "2-" + strconv.Itoa(glob.Context.Limit-10)
+		glob.setStep()
+
+	case "new-list":
+		glob.Context.Step = "2-" + strconv.Itoa(glob.Context.Limit)
+		glob.setStep()
+
+		glob.Context.Limit = glob.Context.Limit + 10
+		glob.setLimit()
+
+	case "prev-list":
+		glob.Context.Step = "2-" + strconv.Itoa(glob.Context.Limit-20)
+		glob.setStep()
+
+		glob.Context.Limit = glob.Context.Limit - 10
+		glob.setLimit()
+
+	case "discard", "like":
+		lastStep, _ := strconv.Atoi(strings.Split(glob.Context.Text, "-")[1])
+		glob.Context.Step = "2-" + strconv.Itoa(lastStep+1)
+		glob.setStep()
+
 		switch glob.Context.Meaning {
+		case "like":
+			glob.addChoice(lastStep)
+		case "discard":
+			glob.removeChoice(lastStep)
+		}
 
-		case "create-room":
-			glob.init()
-			glob.Context.Step = "1"
-			glob.Context.RoomID = genRoomNum()
-			file.WriteLineCSV([]string{
-				strconv.FormatInt(glob.Context.ChatID, 10),
-				glob.Context.Step,
-				glob.Context.RoomID,
-				"[]",
-			}, glob.File)
-
-		case "enter-room":
-			glob.init()
-			// register step 1
-			glob.Context.Step = "1"
-			file.WriteLineCSV([]string{
-				strconv.FormatInt(glob.Context.ChatID, 10),
-				glob.Context.Step,
-				glob.Context.RoomID,
-				"[]",
-			}, glob.File)
-
-		case "join-room":
-			if glob.isRoom(glob.Context.Text) {
-				glob.Context.RoomID = glob.Context.Text
-				glob.setRoom()
-			}
-
-		case "room-found":
-			glob.handleScrape()
-
-		case "start-choice":
-			glob.Context.Step = "2-1"
-			glob.setStep()
-			glob.Context.Choice = []int{}
-			glob.setChoice()
-
-		case "discard", "like":
-			lastStep, _ := strconv.Atoi(strings.Split(glob.Context.Text, "-")[1])
-			glob.Context.Step = "2-" + strconv.Itoa(lastStep+1)
-			glob.setStep()
-
-			glob.getChoice()
-			switch glob.Context.Meaning {
-			case "like":
-				glob.Context.Choice = append(glob.Context.Choice, lastStep)
-			}
-			glob.setChoice()
-
-			if glob.Context.Step == "2-11" {
-				glob.Context.Step = "3"
-				glob.Context.Meaning = "choice-made"
-				glob.setStep()
-			}
-
-		case "choice-made":
+		if glob.Context.Step == "2-"+strconv.Itoa(glob.Context.Limit) {
 			glob.Context.Step = "3"
+			glob.Context.Meaning = "choice-made"
 			glob.setStep()
 		}
+
+	case "choice-made":
+		glob.Context.Step = "3"
+		glob.setStep()
 	}
 }
 
@@ -246,7 +255,7 @@ func (glob *Global) handleResponse() {
 		glob.Response.Options = &[]bot.Button{
 			bot.Button{Label: "Start Again", Value: "/start"},
 		}
-	case "start-choice", "discard", "like":
+	case "new-list", "prev-list", "start-choice", "discard", "like":
 		movieNum, _ := strconv.Atoi(strings.Split(glob.Context.Step, "-")[1])
 		glob.Response.Text = fmt.Sprintf(
 			"%d. [%s](%s)\n\n%s\n",
@@ -258,7 +267,7 @@ func (glob *Global) handleResponse() {
 		glob.Response.Options = &[]bot.Button{
 			bot.Button{Label: "👎", Value: fmt.Sprintf("discard-%d", movieNum)},
 			bot.Button{Label: "👍", Value: fmt.Sprintf("like-%d", movieNum)},
-			bot.Button{Label: "Stop", Value: "choice-made"},
+			bot.Button{Label: "Skip", Value: "choice-made"},
 		}
 		glob.Response.IsEdit = true
 		glob.Response.Image = &glob.Movies[movieNum-1].Poster
@@ -278,21 +287,28 @@ func (glob *Global) handleResponse() {
 		} else {
 			glob.Response.Text = "Sorry! You do not have any common choices.\nRecommended number of choices is six."
 		}
-		glob.Response.Text = glob.Response.Text + "\n\nYou can try results again if your friends still need to finish."
+		glob.Response.Text = glob.Response.Text + "\n\nYou can try results again if your friends still need to finish.\n" +
+			"Or click More to get more options"
 
 		glob.Response.Options = &[]bot.Button{
 			bot.Button{Label: "Results?", Value: "show-result"},
-			bot.Button{Label: "Choose Again", Value: "start-choice"},
+			bot.Button{Label: "More", Value: "choice-more"},
 			bot.Button{Label: "Exit", Value: "end"},
 		}
 		glob.Response.IsEdit = true
+	case "choice-more":
+		glob.Response.Text = "Do you want to see a new list of movies or try again with previous ones?"
+		options := []bot.Button{
+			bot.Button{Label: "New list", Value: "new-list"},
+			bot.Button{Label: "Same list", Value: "start-choice"},
+		}
+		if glob.Context.Limit > 11 {
+			options = append(options, bot.Button{Label: "Previous list", Value: "prev-list"})
+		}
+		glob.Response.Options = &options
 	case "end":
 		glob.init()
-		glob.Response.Text = "Create a room or enter an existing room?"
-		glob.Response.Options = &[]bot.Button{
-			bot.Button{Label: "Create", Value: "create-room"},
-			bot.Button{Label: "Enter", Value: "enter-room"},
-		}
+		glob.Response.Text = "Click here to /start again"
 	case "help":
 		glob.Response.Text = "*Help*:\n\n" +
 			"This bot shows you top ten movies playing in Berlin currently.\n" +
@@ -326,7 +342,7 @@ func (glob *Global) isRoom(room string) bool {
 		return false
 	}
 	for _, line := range mem {
-		if len(line) == 4 && room == line[2] {
+		if room == line[2] {
 			return true
 		}
 	}
@@ -369,6 +385,31 @@ func (glob *Global) setStep() {
 	file.UpdateColsCSV(glob.Context.Step, 1, strconv.FormatInt(glob.Context.ChatID, 10), 0, glob.File)
 }
 
+func (glob *Global) getLimit() {
+	mem, err := file.ReadCSV(glob.File)
+	if err != nil {
+		return
+	}
+	for _, line := range mem {
+		lineChatID, _ := strconv.ParseInt(line[0], 10, 64)
+		if glob.Context.ChatID == lineChatID {
+			glob.Context.Limit, _ = strconv.Atoi(line[4])
+			break
+		}
+	}
+}
+
+func (glob *Global) setLimit() {
+	file.UpdateColsCSV(strconv.Itoa(glob.Context.Limit), 4, strconv.FormatInt(glob.Context.ChatID, 10), 0, glob.File)
+}
+
+func (glob *Global) addChoice(current int) {
+	glob.getChoice()
+	glob.Context.Choice = append(glob.Context.Choice, current)
+	glob.Context.Choice = deDupe(glob.Context.Choice)
+	glob.setChoice()
+}
+
 func (glob *Global) getChoice() {
 	mem, err := file.ReadCSV(glob.File)
 	if err != nil {
@@ -381,6 +422,12 @@ func (glob *Global) getChoice() {
 			break
 		}
 	}
+}
+
+func (glob *Global) removeChoice(current int) {
+	glob.getChoice()
+	glob.Context.Choice = remove(glob.Context.Choice, current)
+	glob.setChoice()
 }
 
 func (glob *Global) setChoice() {
@@ -490,4 +537,24 @@ func genRoomNum() string {
 func randInt(min, max int) int {
 	rand.Seed(time.Now().Unix())
 	return min + rand.Intn(max-min+1)
+}
+
+func deDupe(slice []int) (list []int) {
+	keys := make(map[int]bool)
+	for _, entry := range slice {
+		if _, value := keys[entry]; !value {
+			keys[entry] = true
+			list = append(list, entry)
+		}
+	}
+	return
+}
+
+func remove(s []int, i int) (o []int) {
+	for _, e := range s {
+		if e != i {
+			o = append(o, e)
+		}
+	}
+	return
 }

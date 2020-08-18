@@ -16,14 +16,13 @@ type Global struct {
 
 // Context stores meaning from human interaction
 type Context struct {
-	Actionable bool   // Whether an action from server side is necessary
-	ChatID     int64  // Stores User ID or Chat ID
-	Choice     []int  // Slice containing choices
-	Limit      *int   // Limit of choices set
-	Meaning    string // Meaning as assigned could be internal words
-	RoomID     string // RoomID to hold the room reference
-	Step       string // Step to store milestones in a conversation
-	Text       string // the original message from user
+	ChatID  int64  // Stores User ID or Chat ID
+	Choice  []int  // Slice containing choices
+	Limit   int    // Limit of choices set
+	Meaning string // Meaning as assigned could be internal words
+	RoomID  string // RoomID to hold the room reference
+	Step    string // Step to store milestones in a conversation
+	Text    string // the original message from user
 }
 
 // Response stores the output from this bot
