@@ -88,6 +88,7 @@ func (glob *Global) handleContext() {
 		return
 	}
 	if glob.Context.Text == "create-room" ||
+		glob.Context.Text == "choice-room" ||
 		glob.Context.Text == "choice-more" ||
 		glob.Context.Text == "enter-room" ||
 		glob.Context.Text == "exit" ||
@@ -204,8 +205,15 @@ func (glob *Global) handleAction() {
 func (glob *Global) handleResponse() {
 	switch glob.Context.Meaning {
 	case "start":
-		// first clean all past records
 		glob.init()
+		glob.Response.Text = "Hello there, I am PickFlick! I can help you and your " +
+			"friends decide on a movie evening by taking you through the latest shows currently in town.\n\n" +
+			"Do not worry I would also send you the ticket links to buy"
+		glob.Response.Options = &[]bot.Button{
+			bot.Button{Label: "Meh!", Value: "exit"},
+			bot.Button{Label: "Continue!", Value: "choice-room"},
+		}
+	case "choice-room":
 		glob.Response.Text = "A room is required to find a common choice between multiple friends.\n\nCreate a room or enter an existing room?"
 		glob.Response.Options = &[]bot.Button{
 			bot.Button{Label: "Create", Value: "create-room"},
@@ -244,7 +252,7 @@ func (glob *Global) handleResponse() {
 			}
 		}
 	case "room-found":
-		glob.Response.Text = "Now I would show you top 10 movies this week in Berlin. You have to like or dislike. You could also stop it anytime. Alright?"
+		glob.Response.Text = "Now I would show you 10 movies currently running in Berlin. You have to like or dislike. You could also skip to the end anytime. Alright?"
 		glob.Response.Options = &[]bot.Button{
 			bot.Button{Label: "Meh!", Value: "exit"},
 			bot.Button{Label: "Cool!", Value: "start-choice"},
