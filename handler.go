@@ -364,6 +364,9 @@ func (glob *Global) movieChoices() (mc []MovieChoice) {
 	}
 
 	for i, unit := range choiceMap {
+		if unit == 0 {
+			continue
+		}
 		percent := int(float64(unit) / float64(len(choices)) * float64(100))
 		if percent > 50 {
 			mc = append(mc, MovieChoice{
