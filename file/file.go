@@ -11,8 +11,8 @@ import (
 	"github.com/pkg/errors"
 )
 
-// WriteFileCSV takes in a 2D array and overwrites to a csv file
-func WriteFileCSV(records [][]string, file string) error {
+// WriteCSV takes in a 2D array and overwrites to a csv file
+func WriteCSV(records [][]string, file string) error {
 	err := os.Remove(file)
 	if err != nil {
 		return errors.Wrap(err, "file deletion failed")
@@ -53,22 +53,24 @@ func WriteLineCSV(record []string, file string) error {
 
 // UpdateLinesCSV takes in a row and updates multiple a CSV file by a column
 // In case of nil row, the line is deleted
-func UpdateLinesCSV(newRecord []string, file, value string, col int) error {
+// If a line is found and updated it returns true
+func UpdateLinesCSV(newRecord []string, file, value string, col int) (done bool, err error) {
 	lines, err := ReadCSV(file)
 	if err != nil {
-		return errors.Wrap(err, "file open failed")
+		err = errors.Wrap(err, "file open failed")
+		return
 	}
 
 	records := lines
 	for i, line := range lines {
 		if value == line[col] {
 			records[i] = newRecord
+			done = true
 		}
 	}
 
-	WriteFileCSV(records, file)
-
-	return nil
+	WriteCSV(records, file)
+	return
 }
 
 // UpdateColsCSV takes in a column and a value
@@ -86,7 +88,7 @@ func UpdateColsCSV(newValue string, newCol int, queryVal string, queryCol int, f
 		}
 	}
 
-	WriteFileCSV(records, file)
+	WriteCSV(records, file)
 
 	return nil
 }

@@ -23,9 +23,7 @@ import (
 func (glob *Global) handleHook(c *gin.Context) {
 	buf := new(bytes.Buffer)
 	buf.ReadFrom(c.Request.Body)
-
 	var input Input
-
 	err := json.Unmarshal(buf.Bytes(), &input)
 	check(err)
 
@@ -39,9 +37,11 @@ func (glob *Global) handleHook(c *gin.Context) {
 		glob.handleCallback(*input.CallbackQuery)
 	}
 
+	glob.retrieve()
 	glob.handleContext()
 	glob.handleAction()
 	glob.handleResponse()
+	glob.persist()
 	glob.Bot.Send()
 
 	c.JSON(200, nil)
@@ -65,16 +65,11 @@ func (glob *Global) handleCallback(call CallbackQuery) {
 	glob.Context.ChatID = *call.Message.Chat.ID
 	glob.Context.Text = *call.Data
 
-	toasts := []string{"Okay!", "Cool!", "Alright!", "Fine!", "Hmmm!"}
+	toasts := []string{"Okay!", "Cool!", "Alright!", "Fine!", "Hmmm!", "Nice"}
 	glob.Bot.Session.Toast = &toasts[randInt(0, 4)]
 }
 
 func (glob *Global) handleContext() {
-	glob.getStep()
-	glob.getRoom()
-	glob.handleScrape()
-	glob.getLimit()
-
 	if glob.Context.Text == "/start" {
 		glob.Context.Meaning = "start"
 		return
@@ -128,60 +123,34 @@ func (glob *Global) handleContext() {
 func (glob *Global) handleAction() {
 	switch glob.Context.Meaning {
 	case "create-room":
-		glob.init()
 		glob.Context.Step = "1"
 		glob.Context.RoomID = genRoomNum()
-		file.WriteLineCSV([]string{
-			strconv.FormatInt(glob.Context.ChatID, 10),
-			glob.Context.Step,
-			glob.Context.RoomID,
-			"[]",
-			"11",
-		}, glob.File)
+		glob.Context.Limit = 11
 
 	case "enter-room":
-		glob.init()
 		// register step 1
 		glob.Context.Step = "1"
-		file.WriteLineCSV([]string{
-			strconv.FormatInt(glob.Context.ChatID, 10),
-			glob.Context.Step,
-			glob.Context.RoomID,
-			"[]",
-			"11",
-		}, glob.File)
+		glob.Context.Limit = 11
 
 	case "join-room":
 		if glob.isRoom(glob.Context.Text) {
 			glob.Context.RoomID = glob.Context.Text
-			glob.setRoom()
 		}
-
-	case "room-found":
-		glob.handleScrape()
 
 	case "start-choice":
 		glob.Context.Step = "2-" + strconv.Itoa(glob.Context.Limit-10)
-		glob.setStep()
 
 	case "new-list":
 		glob.Context.Step = "2-" + strconv.Itoa(glob.Context.Limit)
-		glob.setStep()
-
 		glob.Context.Limit = glob.Context.Limit + 10
-		glob.setLimit()
 
 	case "prev-list":
 		glob.Context.Step = "2-" + strconv.Itoa(glob.Context.Limit-20)
-		glob.setStep()
-
 		glob.Context.Limit = glob.Context.Limit - 10
-		glob.setLimit()
 
 	case "discard", "like":
 		lastStep, _ := strconv.Atoi(strings.Split(glob.Context.Text, "-")[1])
 		glob.Context.Step = "2-" + strconv.Itoa(lastStep+1)
-		glob.setStep()
 
 		switch glob.Context.Meaning {
 		case "like":
@@ -193,19 +162,21 @@ func (glob *Global) handleAction() {
 		if glob.Context.Step == "2-"+strconv.Itoa(glob.Context.Limit) {
 			glob.Context.Step = "3"
 			glob.Context.Meaning = "choice-made"
-			glob.setStep()
 		}
 
 	case "choice-made":
 		glob.Context.Step = "3"
-		glob.setStep()
+	case "end":
+		glob.Context.Step = "1"
+		glob.Context.RoomID = ""
+		glob.Context.Limit = 11
+		glob.Context.Choice = nil
 	}
 }
 
 func (glob *Global) handleResponse() {
 	switch glob.Context.Meaning {
 	case "start":
-		glob.init()
 		glob.Response.Text = "Hello there, I am PickFlick! I can help you and your " +
 			"friends decide on a movie evening by taking you through the latest shows currently in town.\n\n" +
 			"Do not worry I would also send you the ticket links to buy"
@@ -315,7 +286,6 @@ func (glob *Global) handleResponse() {
 		}
 		glob.Response.Options = &options
 	case "end":
-		glob.init()
 		glob.Response.Text = "Click here to /start again"
 	case "help":
 		glob.Response.Text = "*Help*:\n\n" +
@@ -339,11 +309,6 @@ func (glob *Global) handleResponse() {
 	glob.Bot.Session.Text = &glob.Response.Text
 }
 
-func (glob *Global) init() {
-	// clear previous chats
-	file.UpdateLinesCSV(nil, glob.File, strconv.FormatInt(glob.Context.ChatID, 10), 0)
-}
-
 func (glob *Global) isRoom(room string) bool {
 	mem, err := file.ReadCSV(glob.File)
 	if err != nil {
@@ -357,90 +322,13 @@ func (glob *Global) isRoom(room string) bool {
 	return false
 }
 
-func (glob *Global) getRoom() {
-	mem, err := file.ReadCSV(glob.File)
-	if err != nil {
-		return
-	}
-	for _, line := range mem {
-		lineChatID, _ := strconv.ParseInt(line[0], 10, 64)
-		if glob.Context.ChatID == lineChatID {
-			glob.Context.RoomID = line[2]
-			break
-		}
-	}
-}
-
-func (glob *Global) setRoom() {
-	file.UpdateColsCSV(glob.Context.RoomID, 2, strconv.FormatInt(glob.Context.ChatID, 10), 0, glob.File)
-}
-
-func (glob *Global) getStep() {
-	mem, err := file.ReadCSV(glob.File)
-	if err != nil {
-		return
-	}
-	for _, line := range mem {
-		lineChatID, _ := strconv.ParseInt(line[0], 10, 64)
-		if glob.Context.ChatID == lineChatID {
-			glob.Context.Step = line[1]
-			break
-		}
-	}
-}
-
-func (glob *Global) setStep() {
-	file.UpdateColsCSV(glob.Context.Step, 1, strconv.FormatInt(glob.Context.ChatID, 10), 0, glob.File)
-}
-
-func (glob *Global) getLimit() {
-	mem, err := file.ReadCSV(glob.File)
-	if err != nil {
-		return
-	}
-	for _, line := range mem {
-		lineChatID, _ := strconv.ParseInt(line[0], 10, 64)
-		if glob.Context.ChatID == lineChatID {
-			glob.Context.Limit, _ = strconv.Atoi(line[4])
-			break
-		}
-	}
-}
-
-func (glob *Global) setLimit() {
-	file.UpdateColsCSV(strconv.Itoa(glob.Context.Limit), 4, strconv.FormatInt(glob.Context.ChatID, 10), 0, glob.File)
-}
-
 func (glob *Global) addChoice(current int) {
-	glob.getChoice()
 	glob.Context.Choice = append(glob.Context.Choice, current)
 	glob.Context.Choice = deDupe(glob.Context.Choice)
-	glob.setChoice()
-}
-
-func (glob *Global) getChoice() {
-	mem, err := file.ReadCSV(glob.File)
-	if err != nil {
-		return
-	}
-	for _, line := range mem {
-		lineChatID, _ := strconv.ParseInt(line[0], 10, 64)
-		if glob.Context.ChatID == lineChatID {
-			json.Unmarshal([]byte(line[3]), &glob.Context.Choice)
-			break
-		}
-	}
 }
 
 func (glob *Global) removeChoice(current int) {
-	glob.getChoice()
 	glob.Context.Choice = remove(glob.Context.Choice, current)
-	glob.setChoice()
-}
-
-func (glob *Global) setChoice() {
-	choiceStr, _ := json.Marshal(glob.Context.Choice)
-	file.UpdateColsCSV(string(choiceStr), 3, strconv.FormatInt(glob.Context.ChatID, 10), 0, glob.File)
 }
 
 func (glob *Global) getChoices() (choices [][]int) {
@@ -504,9 +392,49 @@ func (glob *Global) handleScrape() {
 	glob.Movies = movies
 }
 
+func (glob *Global) retrieve() {
+	mem, err := file.ReadCSV(glob.File)
+	if err != nil {
+		return
+	}
+	for _, line := range mem {
+		lineChatID, _ := strconv.ParseInt(line[0], 10, 64)
+		if glob.Context.ChatID == lineChatID {
+			glob.Context.Step = line[1]
+			glob.Context.RoomID = line[2]
+			json.Unmarshal([]byte(line[3]), &glob.Context.Choice)
+			glob.Context.Limit, _ = strconv.Atoi(line[4])
+			break
+		}
+	}
+}
+
+func (glob *Global) persist() {
+	chatID := strconv.FormatInt(glob.Context.ChatID, 10)
+	choiceStr, _ := json.Marshal(glob.Context.Choice)
+
+	done, _ := file.UpdateLinesCSV([]string{
+		chatID,
+		glob.Context.Step,
+		glob.Context.RoomID,
+		string(choiceStr),
+		strconv.Itoa(glob.Context.Limit),
+	}, glob.File, chatID, 0)
+
+	if !done {
+		file.WriteLineCSV([]string{
+			chatID,
+			"1",
+			"",
+			"nil",
+			"11",
+		}, glob.File)
+	}
+}
+
 func (glob *Global) poll() {
 	for range time.Tick(time.Hour) {
-		glob.handleScrape()
+		go glob.handleScrape()
 	}
 }
 
