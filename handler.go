@@ -20,6 +20,10 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+var roomIDlen = 3
+var defLim = 10
+var chcInc = 10
+
 func (glob *Global) handleHook(c *gin.Context) {
 	buf := new(bytes.Buffer)
 	buf.ReadFrom(c.Request.Body)
@@ -94,12 +98,12 @@ func (glob *Global) handleContext() {
 		glob.Context.Meaning = glob.Context.Text
 		return
 	}
-	if len(glob.Context.Text) == 3 && glob.Context.Step == "1" {
+	if len(glob.Context.Text) == roomIDlen && glob.Context.Step == "1" {
 		glob.Context.Meaning = "join-room"
 		return
 	}
-	if strings.Contains(glob.Context.Text, "discard") {
-		glob.Context.Meaning = "discard"
+	if strings.Contains(glob.Context.Text, "dislike") {
+		glob.Context.Meaning = "dislike"
 		return
 	}
 	if strings.Contains(glob.Context.Text, "like") {
@@ -125,12 +129,12 @@ func (glob *Global) handleAction() {
 	case "create-room":
 		glob.Context.Step = "1"
 		glob.Context.RoomID = genRoomNum()
-		glob.Context.Limit = 11
+		glob.Context.Limit = defLim
 
 	case "enter-room":
 		// register step 1
 		glob.Context.Step = "1"
-		glob.Context.Limit = 11
+		glob.Context.Limit = defLim
 
 	case "join-room":
 		if glob.isRoom(glob.Context.Text) {
@@ -138,38 +142,40 @@ func (glob *Global) handleAction() {
 		}
 
 	case "start-choice":
-		glob.Context.Step = "2-" + strconv.Itoa(glob.Context.Limit-10)
+		glob.Context.Step = "2-" + strconv.Itoa(glob.Context.Limit-chcInc+1)
 
 	case "new-list":
-		glob.Context.Step = "2-" + strconv.Itoa(glob.Context.Limit)
-		glob.Context.Limit = glob.Context.Limit + 10
+		glob.Context.Step = "2-" + strconv.Itoa(glob.Context.Limit+1)
+		glob.Context.Limit = glob.Context.Limit + chcInc
 
 	case "prev-list":
-		glob.Context.Step = "2-" + strconv.Itoa(glob.Context.Limit-20)
-		glob.Context.Limit = glob.Context.Limit - 10
+		glob.Context.Step = "2-" + strconv.Itoa(glob.Context.Limit-(chcInc*2)+1)
+		glob.Context.Limit = glob.Context.Limit - chcInc
 
-	case "discard", "like":
+	case "dislike", "like":
 		lastStep, _ := strconv.Atoi(strings.Split(glob.Context.Text, "-")[1])
-		glob.Context.Step = "2-" + strconv.Itoa(lastStep+1)
 
 		switch glob.Context.Meaning {
 		case "like":
 			glob.addChoice(lastStep)
-		case "discard":
+		case "dislike":
 			glob.removeChoice(lastStep)
 		}
 
 		if glob.Context.Step == "2-"+strconv.Itoa(glob.Context.Limit) {
 			glob.Context.Step = "3"
 			glob.Context.Meaning = "choice-made"
+		} else {
+			glob.Context.Step = "2-" + strconv.Itoa(lastStep+1)
 		}
 
 	case "choice-made":
 		glob.Context.Step = "3"
+
 	case "end":
 		glob.Context.Step = "1"
 		glob.Context.RoomID = ""
-		glob.Context.Limit = 11
+		glob.Context.Limit = defLim
 		glob.Context.Choice = nil
 	}
 }
@@ -234,7 +240,7 @@ func (glob *Global) handleResponse() {
 		glob.Response.Options = &[]bot.Button{
 			bot.Button{Label: "Start Again", Value: "/start"},
 		}
-	case "new-list", "prev-list", "start-choice", "discard", "like":
+	case "new-list", "prev-list", "start-choice", "dislike", "like":
 		movieNum, _ := strconv.Atoi(strings.Split(glob.Context.Step, "-")[1])
 		glob.Response.Text = fmt.Sprintf(
 			"%d. [%s](%s)\n\n%s\n",
@@ -244,7 +250,7 @@ func (glob *Global) handleResponse() {
 			glob.Movies[movieNum-1].Description,
 		)
 		glob.Response.Options = &[]bot.Button{
-			bot.Button{Label: "👎", Value: fmt.Sprintf("discard-%d", movieNum)},
+			bot.Button{Label: "👎", Value: fmt.Sprintf("dislike-%d", movieNum)},
 			bot.Button{Label: "👍", Value: fmt.Sprintf("like-%d", movieNum)},
 			bot.Button{Label: "Skip", Value: "choice-made"},
 		}
@@ -281,7 +287,7 @@ func (glob *Global) handleResponse() {
 			bot.Button{Label: "New list", Value: "new-list"},
 			bot.Button{Label: "Same list", Value: "start-choice"},
 		}
-		if glob.Context.Limit > 11 {
+		if glob.Context.Limit > defLim {
 			options = append(options, bot.Button{Label: "Previous list", Value: "prev-list"})
 		}
 		glob.Response.Options = &options
@@ -427,7 +433,7 @@ func (glob *Global) persist() {
 			"1",
 			"",
 			"nil",
-			"11",
+			strconv.Itoa(defLim),
 		}, glob.File)
 	}
 }
@@ -445,7 +451,7 @@ func check(e error) {
 }
 
 func genRoomNum() string {
-	n := 3
+	n := roomIDlen
 	b := make([]byte, n)
 	var src = rand.NewSource(time.Now().UnixNano())
 	const letterBytes = "abcdefghijkmnopqrstuvwxyz023456789"
