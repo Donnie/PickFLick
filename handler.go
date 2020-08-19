@@ -74,7 +74,7 @@ func (glob *Global) handleCallback(call CallbackQuery) {
 }
 
 func (glob *Global) handleContext() {
-	if glob.Context.Text == "/start" {
+	if glob.Context.Text == "/start" || glob.Context.Fresh {
 		glob.Context.Meaning = "start"
 		return
 	}
@@ -98,7 +98,7 @@ func (glob *Global) handleContext() {
 		glob.Context.Meaning = glob.Context.Text
 		return
 	}
-	if len(glob.Context.Text) == roomIDlen && glob.Context.Step == "1" {
+	if len(glob.Context.Text) == roomIDlen && glob.Context.Step == "room" {
 		glob.Context.Meaning = "join-room"
 		return
 	}
@@ -114,11 +114,11 @@ func (glob *Global) handleContext() {
 		glob.Context.Meaning = "choice-made"
 		return
 	}
-	if glob.Context.Text == "show-result" && glob.Context.Step == "3" {
+	if glob.Context.Text == "show-result" && glob.Context.Step == "result" {
 		glob.Context.Meaning = "show-result"
 		return
 	}
-	if glob.Context.Text == "end" && glob.Context.Step == "3" {
+	if glob.Context.Text == "end" && glob.Context.Step == "result" {
 		glob.Context.Meaning = "end"
 		return
 	}
@@ -127,13 +127,13 @@ func (glob *Global) handleContext() {
 func (glob *Global) handleAction() {
 	switch glob.Context.Meaning {
 	case "create-room":
-		glob.Context.Step = "1"
+		glob.Context.Step = "room"
 		glob.Context.RoomID = genRoomNum()
 		glob.Context.Limit = defLim
 
 	case "enter-room":
 		// register step 1
-		glob.Context.Step = "1"
+		glob.Context.Step = "room"
 		glob.Context.Limit = defLim
 
 	case "join-room":
@@ -142,14 +142,14 @@ func (glob *Global) handleAction() {
 		}
 
 	case "start-choice":
-		glob.Context.Step = "2-" + strconv.Itoa(glob.Context.Limit-chcInc+1)
+		glob.Context.Step = "choice-" + strconv.Itoa(glob.Context.Limit-chcInc+1)
 
 	case "new-list":
-		glob.Context.Step = "2-" + strconv.Itoa(glob.Context.Limit+1)
+		glob.Context.Step = "choice-" + strconv.Itoa(glob.Context.Limit+1)
 		glob.Context.Limit = glob.Context.Limit + chcInc
 
 	case "prev-list":
-		glob.Context.Step = "2-" + strconv.Itoa(glob.Context.Limit-(chcInc*2)+1)
+		glob.Context.Step = "choice-" + strconv.Itoa(glob.Context.Limit-(chcInc*2)+1)
 		glob.Context.Limit = glob.Context.Limit - chcInc
 
 	case "dislike", "like":
@@ -162,18 +162,18 @@ func (glob *Global) handleAction() {
 			glob.removeChoice(lastStep)
 		}
 
-		if glob.Context.Step == "2-"+strconv.Itoa(glob.Context.Limit) {
-			glob.Context.Step = "3"
+		if glob.Context.Step == "choice-"+strconv.Itoa(glob.Context.Limit) {
+			glob.Context.Step = "result"
 			glob.Context.Meaning = "choice-made"
 		} else {
-			glob.Context.Step = "2-" + strconv.Itoa(lastStep+1)
+			glob.Context.Step = "choice-" + strconv.Itoa(lastStep+1)
 		}
 
 	case "choice-made":
-		glob.Context.Step = "3"
+		glob.Context.Step = "result"
 
 	case "end":
-		glob.Context.Step = "1"
+		glob.Context.Step = "room"
 		glob.Context.RoomID = ""
 		glob.Context.Limit = defLim
 		glob.Context.Choice = nil
@@ -399,6 +399,7 @@ func (glob *Global) handleScrape() {
 }
 
 func (glob *Global) retrieve() {
+	found := false
 	mem, err := file.ReadCSV(glob.File)
 	if err != nil {
 		return
@@ -410,8 +411,12 @@ func (glob *Global) retrieve() {
 			glob.Context.RoomID = line[2]
 			json.Unmarshal([]byte(line[3]), &glob.Context.Choice)
 			glob.Context.Limit, _ = strconv.Atoi(line[4])
+			found = true
 			break
 		}
+	}
+	if !found {
+		glob.Context.Fresh = true
 	}
 }
 
@@ -430,7 +435,7 @@ func (glob *Global) persist() {
 	if !done {
 		file.WriteLineCSV([]string{
 			chatID,
-			"1",
+			"room",
 			"",
 			"nil",
 			strconv.Itoa(defLim),

@@ -18,6 +18,7 @@ type Global struct {
 type Context struct {
 	ChatID  int64  // Stores User ID or Chat ID
 	Choice  []int  // Slice containing choices
+	Fresh   bool   // Whether a chat is from a new user
 	Limit   int    // Limit of choices set
 	Meaning string // Meaning as assigned could be internal words
 	RoomID  string // RoomID to hold the room reference
