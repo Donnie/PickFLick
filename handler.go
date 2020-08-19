@@ -5,14 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"log"
-	"math/rand"
 	"os"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
-	"unsafe"
 
 	"github.com/Donnie/PickFlick/bot"
 	"github.com/Donnie/PickFlick/file"
@@ -23,6 +20,8 @@ import (
 var roomIDlen = 3
 var defLim = 10
 var chcInc = 10
+var defObj = "movies"
+var defColl = "Berlin"
 
 func (glob *Global) handleHook(c *gin.Context) {
 	buf := new(bytes.Buffer)
@@ -183,9 +182,9 @@ func (glob *Global) handleAction() {
 func (glob *Global) handleResponse() {
 	switch glob.Context.Meaning {
 	case "start":
-		glob.Response.Text = "Hello there, I am PickFlick! I can help you and your " +
-			"friends decide on a movie evening by taking you through the latest shows currently in town.\n\n" +
-			"Do not worry I would also send you the ticket links to buy"
+		glob.Response.Text = "Hello there, I am PickFlick! I can help you and your friends " +
+			"decide on a special evening by taking you through the latest " + defObj + " currently in " + defColl + ".\n\n" +
+			"Do not worry I would also send you the links at the end. 😎"
 		glob.Response.Options = &[]bot.Button{
 			bot.Button{Label: "Meh!", Value: "exit"},
 			bot.Button{Label: "Continue!", Value: "choice-room"},
@@ -229,14 +228,15 @@ func (glob *Global) handleResponse() {
 			}
 		}
 	case "room-found":
-		glob.Response.Text = "Now I would show you 10 movies currently running in Berlin. You have to like or dislike. You could also skip to the end anytime. Alright?"
+		glob.Response.Text = fmt.Sprintf("Now I would show you %d %s currently in %s.", defLim, defObj, defColl) +
+			" You have to like or dislike. You could also skip to the end anytime. Alright?"
 		glob.Response.Options = &[]bot.Button{
 			bot.Button{Label: "Meh!", Value: "exit"},
 			bot.Button{Label: "Cool!", Value: "start-choice"},
 		}
 		glob.Response.IsEdit = true
 	case "exit":
-		glob.Response.Text = "All clear! Have fun manually deciding movies 😂"
+		glob.Response.Text = fmt.Sprintf("All clear! Have fun manually deciding %s 😂", defObj)
 		glob.Response.Options = &[]bot.Button{
 			bot.Button{Label: "Start Again", Value: "/start"},
 		}
@@ -282,7 +282,7 @@ func (glob *Global) handleResponse() {
 		}
 		glob.Response.IsEdit = true
 	case "choice-more":
-		glob.Response.Text = "Do you want to see a new list of movies or try again with previous ones?"
+		glob.Response.Text = fmt.Sprintf("Do you want to see a new list of %s or try again with previous ones?", defObj)
 		options := []bot.Button{
 			bot.Button{Label: "New list", Value: "new-list"},
 			bot.Button{Label: "Same list", Value: "start-choice"},
@@ -295,8 +295,8 @@ func (glob *Global) handleResponse() {
 		glob.Response.Text = "Click here to /start again"
 	case "help":
 		glob.Response.Text = "*Help*:\n\n" +
-			"This bot shows you top ten movies playing in Berlin currently.\n" +
-			"Try to choose at least six movies so that the probability of a match is higher with your friends.\n" +
+			fmt.Sprintf("This bot shows you top %d %s from %s.\n", defLim, defObj, defColl) +
+			fmt.Sprintf("Try to choose at least %d %s so that the probability of a match is higher with your friends.\n", ((defLim/2)+1), defObj) +
 			"Once complete it would show you the results. But you would be able to try again.\n" +
 			"The results are saved as long as you do not exit the bot.\n\n" +
 			"/start Use this command to restart the bot anytime during usage."
@@ -450,61 +450,4 @@ func (glob *Global) poll() {
 	for range time.Tick(time.Hour) {
 		go glob.handleScrape()
 	}
-}
-
-func check(e error) {
-	if e != nil {
-		log.Panic(e)
-	}
-}
-
-func genRoomNum() string {
-	n := roomIDlen
-	b := make([]byte, n)
-	var src = rand.NewSource(time.Now().UnixNano())
-	const letterBytes = "abcdefghijkmnopqrstuvwxyz023456789"
-	const (
-		letterIdxBits = 6                    // 6 bits to represent a letter index
-		letterIdxMask = 1<<letterIdxBits - 1 // All 1-bits, as many as letterIdxBits
-		letterIdxMax  = 63 / letterIdxBits   // # of letter indices fitting in 63 bits
-	)
-	// A src.Int63() generates 63 random bits, enough for letterIdxMax characters!
-	for i, cache, remain := n-1, src.Int63(), letterIdxMax; i >= 0; {
-		if remain == 0 {
-			cache, remain = src.Int63(), letterIdxMax
-		}
-		if idx := int(cache & letterIdxMask); idx < len(letterBytes) {
-			b[i] = letterBytes[idx]
-			i--
-		}
-		cache >>= letterIdxBits
-		remain--
-	}
-
-	return *(*string)(unsafe.Pointer(&b))
-}
-
-func randInt(min, max int) int {
-	rand.Seed(time.Now().Unix())
-	return min + rand.Intn(max-min+1)
-}
-
-func deDupe(slice []int) (list []int) {
-	keys := make(map[int]bool)
-	for _, entry := range slice {
-		if _, value := keys[entry]; !value {
-			keys[entry] = true
-			list = append(list, entry)
-		}
-	}
-	return
-}
-
-func remove(s []int, i int) (o []int) {
-	for _, e := range s {
-		if e != i {
-			o = append(o, e)
-		}
-	}
-	return
 }
